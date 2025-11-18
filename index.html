@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NeuroBike — SmartCycle HUD</title>
+
+  <!-- PWA Metadata -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1E3A8A" />
+
+  <!-- Icons -->
+  <link rel="icon" href="/icons/favicon.ico">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+
+  <!-- Leaflet + Tailwind -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* Gradient Background */
+    body {
+      background: linear-gradient(to bottom right, #3B82F6, #1E3A8A);
+    }
+
+    /* Pulsing GPS Icon */
+    .gps-marker-icon .gps-ring {
+      border: 3px solid #22d3ee;
+      border-radius: 50%;
+      height: 24px;
+      width: 24px;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 15px #22d3ee;
+      animation: pulse-ring 1.5s infinite;
+    }
+    @keyframes pulse-ring {
+      0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.8; }
+      70% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+      100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+    }
+
+    /* Emergency Overlay */
+    #emergencyOverlay {
+      position: fixed; top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background-color: rgba(255, 0, 0, 0.85);
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      color: white;
+      animation: flashRed 0.5s infinite alternate;
+    }
+
+    @keyframes flashRed {
+      from { background-color: rgba(255,0,0,0.85); }
+      to { background-color: rgba(255,0,0,0.65); }
+    }
+
+    /* Proximity Colored Dot */
+    .prox-dot { height: 14px; width: 14px; border-radius: 50%; display:inline-block; }
+    .prox-green { background:#16a34a; }
+    .prox-yellow { background:#f59e0b; }
+    .prox-red { background:#dc2626; animation: proxPulse 1s infinite; }
+
+    @keyframes proxPulse {
+      0%{transform:scale(1);}
+      50%{transform:scale(1.5);}
+      100%{transform:scale(1);}
+    }
+  </style>
+
+</head>
+
+<body class="text-gray-900 h-screen w-screen overflow-hidden font-sans flex flex-col">
+
+  <!-- UI Layout -->
+  <div class="flex-1 grid grid-cols-1 md:grid-cols-5 overflow-hidden relative">
+
+    <!-- HUD Overlays -->
+    <div class="absolute bottom-4 right-4 flex flex-col space-y-3 z-[999]">
+
+      <!-- Calories Overlay -->
+      <div class="bg-white/70 p-3 rounded-xl shadow backdrop-blur-md flex items-center space-x-3">
+        <img src="/icons/icon-192.png" class="h-7 w-7 rounded-lg">
+        <div>
+          <p class="text-xs text-gray-600 uppercase">Calories</p>
+          <p class="text-xl font-bold text-gray-900">
+            <span id="overlayCaloriesValue">--</span>
+            <span class="text-sm text-red-600 ml-1">kcal</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Proximity -->
+      <div class="bg-white/70 p-3 rounded-xl shadow backdrop-blur-md flex items-center space-x-3">
+        <div id="proxDotSmall" class="prox-dot prox-green"></div>
+        <div>
+          <p class="text-xs text-gray-600 uppercase">Proximity</p>
+          <p class="text-xl font-bold text-gray-900">
+            <span id="overlayProxValue">--</span> <span class="text-sm">cm</span>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEFT Panels -->
+    <div class="md:col-span-2 flex flex-col p-4 space-y-5">
+
+      <!-- NeuroBike Header -->
+      <div class="flex items-center justify-center bg-white/30 rounded-2xl shadow border border-white/40 py-3 backdrop-blur-lg">
+        <h1 class="text-3xl font-extrabold text-white tracking-wide">NeuroBike</h1>
+      </div>
+
+      <!-- Speed Panel -->
+      <div class="flex-1 bg-white/30 rounded-2xl shadow border border-white/40 p-6 backdrop-blur-lg flex flex-col justify-center">
+        <p class="text-2xl font-bold text-white tracking-wide">SPEED</p>
+        <div class="flex items-end mt-4">
+          <span id="speedValue" class="text-8xl font-black text-white leading-none">--</span>
+          <span class="text-3xl text-gray-200 ml-2 pb-2">km/h</span>
+        </div>
+      </div>
+
+      <!-- Crash & Terrain -->
+      <div class="grid grid-cols-2 gap-4">
+
+        <div id="crashPanel" class="bg-white/20 border-green-500/40 border-2 rounded-2xl shadow p-4 backdrop-blur-lg">
+          <p class="text-sm text-white">Crash Status</p>
+          <p id="crashStatus" class="text-3xl font-bold text-white mt-2">SAFE</p>
+        </div>
+
+        <div id="terrainPanel" class="bg-white/20 border-green-500/40 border-2 rounded-2xl shadow p-4 backdrop-blur-lg">
+          <p class="text-sm text-white">Terrain</p>
+          <p id="terrainStatus" class="text-3xl font-bold text-white mt-2">SMOOTH</p>
+        </div>
+
+      </div>
+
+      <!-- Summary Panel -->
+      <div class="bg-white/20 border border-white/40 rounded-2xl shadow p-5 backdrop-blur-lg space-y-4">
+
+        <div>
+          <p class="text-sm text-white">Duration</p>
+          <div class="flex items-center space-x-3">
+            <p id="summaryDuration" class="text-2xl font-bold text-white">--:--:--</p>
+
+            <!-- Timer Buttons -->
+            <button id="timerStart" class="bg-white p-2 rounded-lg">
+              ▶
+            </button>
+            <button id="timerStop" class="bg-white p-2 rounded-lg">
+              ■
+            </button>
+            <button id="timerReset" class="bg-white p-2 rounded-lg">
+              ↺
+            </button>
+          </div>
+        </div>
+
+        <div class="flex justify-between text-lg text-white">
+          <span>Distance</span>
+          <span id="summaryDistance">-- km</span>
+        </div>
+
+        <div class="flex justify-between text-lg text-white">
+          <span>Avg Speed</span>
+          <span id="summaryAvgSpeed">-- km/h</span>
+        </div>
+
+        <div class="flex justify-between text-lg text-white">
+          <span>Max Speed</span>
+          <span id="summaryMaxSpeed">-- km/h</span>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MAP -->
+    <div class="md:col-span-3 w-full h-[40vh] md:h-full" id="map"></div>
+
+  </div>
+
+  <!-- BLE Buttons -->
+  <div class="absolute top-4 right-4 flex space-x-3 z-[888]">
+    <button id="connectButton" class="px-4 py-2 bg-white/90 text-blue-600 rounded-xl shadow font-semibold">Connect</button>
+    <button id="disconnectButton" class="px-4 py-2 bg-white/90 text-red-600 rounded-xl shadow font-semibold" disabled>Disconnect</button>
+    <div id="connectionStatus" class="px-4 py-2 bg-white/70 rounded-xl shadow text-gray-700">Disconnected</div>
+  </div>
+
+  <!-- MAP SCRIPT -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- MAIN JS (BLE + UI) -->
+  <script>
+   /* ===== FULL NeuroBike JS: BLE, Map, HUD, Crash & Terrain, Proximity, Session =====
+   Paste this entire block into your index.html where the placeholder script is.
+*/
+
+const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
+const CHARACTERISTIC_UUID = "87654321-4321-4321-4321-cba987654321";
+
+// UI fields and constants
+const FIELDS = { "Lat":1, "Lon":1, "Spd":1, "Alt":1, "Dist":1, "Sats":1, "AX":1, "AY":1, "AZ":1, "GX":1, "GY":1, "GZ":1, "Prox":1 };
+
+const CRASH_DETECTION_THRESHOLD = 250;
+const TERRAIN_HISTORY_LENGTH = 15;
+const TERRAIN_ROUGH_THRESHOLD = 20000000;
+const TERRAIN_MODERATE_THRESHOLD = 5000000;
+const PROX_SAFE_THRESHOLD = 90;
+const PROX_WARNING_THRESHOLD = 50;
+const KcalPerKm = 40;
+const PATH_MIN_DISTANCE_M = 2;
+const CALC_DELAY_MS = 7000; // warmup after connect
+
+// DOM + state
+const DOM = {};
+let bleDevice = null, bleServer = null, bleCharacteristic = null;
+let map = null, mapMarker = null, pathPolyline = null;
+let pathLatLngs = [];
+let session = { startTime: null, durationInterval: null, maxSpeed: 0, totalSpeed: 0, speedReadings: 0, totalDistanceCM: 0, totalCalories: 0, traveledMeters: 0 };
+let terrainHistory = { ax: [], ay: [], az: [] };
+let manualTimer = { running: false, startTs: 0, elapsedBefore: 0, interval: null };
+let proxState = 'unknown', lastProxAlertTs = 0;
+let calcStartAt = 0, calculationEnabled = false;
+let reconnectAttempts = 0, reconnectTimer = null;
+let lastViewLatLng = null, lastViewTs = 0;
+const MAP_VIEW_MIN_MS = 700;
+const MAP_VIEW_MIN_M = 1.5;
+
+window.addEventListener('DOMContentLoaded', () => {
+  // DOM refs
+  DOM.connectButton = document.getElementById('connectButton');
+  DOM.disconnectButton = document.getElementById('disconnectButton');
+  DOM.connectionStatus = document.getElementById('connectionStatus');
+  DOM.speedValue = document.getElementById('speedValue');
+  DOM.crashPanel = document.getElementById('crashPanel');
+  DOM.crashStatus = document.getElementById('crashStatus');
+  DOM.terrainPanel = document.getElementById('terrainPanel');
+  DOM.terrainStatus = document.getElementById('terrainStatus');
+  DOM.map = document.getElementById('map');
+  DOM.summaryDuration = document.getElementById('summaryDuration');
+  DOM.summaryDistance = document.getElementById('summaryDistance');
+  DOM.summaryAvgSpeed = document.getElementById('summaryAvgSpeed');
+  DOM.summaryMaxSpeed = document.getElementById('summaryMaxSpeed');
+  DOM.overlayCaloriesValue = document.getElementById('overlayCaloriesValue');
+  DOM.proxDotSmall = document.getElementById('proxDotSmall');
+  DOM.overlayProxValue = document.getElementById('overlayProxValue');
+  DOM.timerStart = document.getElementById('timerStart');
+  DOM.timerStop = document.getElementById('timerStop');
+  DOM.timerReset = document.getElementById('timerReset');
+
+  // Events
+  DOM.connectButton.addEventListener('click', onConnectButtonClick);
+  DOM.disconnectButton.addEventListener('click', onDisconnectButtonClick);
+  DOM.timerStart.addEventListener('click', () => startManualTimer());
+  DOM.timerStop.addEventListener('click', () => stopManualTimer());
+  DOM.timerReset.addEventListener('click', () => resetManualTimer());
+
+  if (typeof L !== 'undefined') initializeMap(51.505, -0.09);
+
+  // register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js').then(reg => {
+      console.log('ServiceWorker registered: ', reg.scope);
+    }).catch(err => console.warn('SW register failed:', err));
+  }
+
+  // show iOS hint (non-blocking)
+  if (isIos() && !isWebBluetoothAvailable()) {
+    const hint = document.getElementById('mobileHint');
+    if (hint) hint.style.display = 'block';
+    const d = document.getElementById('dismissHint'); if (d) d.addEventListener('click', ()=>{ if(hint) hint.style.display='none'; });
+  }
+});
+
+// platform checks
+function isIos() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+function isWebBluetoothAvailable() {
+  return !!navigator.bluetooth;
+}
+
+// connection status UI
+function updateConnectionStatus(text, status) {
+  DOM.connectionStatus.textContent = text;
+  // reset classes
+  DOM.connectionStatus.className = 'px-4 py-2 bg-white/70 rounded-xl shadow text-gray-700';
+  if (status === 'connecting') DOM.connectionStatus.classList.add('bg-yellow-100/50','text-yellow-700');
+  else if (status === 'connected') DOM.connectionStatus.classList.add('bg-green-100/50','text-green-700');
+  else if (status === 'error') DOM.connectionStatus.classList.add('bg-red-100/50','text-red-700');
+}
+
+// reconnect backoff
+function scheduleReconnect(delayMs = 1000) {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    reconnectAttempts++;
+    try {
+      if (!bleDevice) return;
+      updateConnectionStatus('Reconnecting...', 'connecting');
+      bleServer = await bleDevice.gatt.connect();
+      const service = await bleServer.getPrimaryService(SERVICE_UUID);
+      bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+      await bleCharacteristic.startNotifications();
+      bleCharacteristic.addEventListener('characteristicvaluechanged', handleCharacteristicNotification);
+      updateConnectionStatus(`Reconnected to ${bleDevice.name || 'Device'}`, 'connected');
+      reconnectAttempts = 0;
+      calcStartAt = Date.now() + CALC_DELAY_MS;
+      calculationEnabled = false;
+      DOM.connectButton.disabled = true;
+      DOM.disconnectButton.disabled = false;
+    } catch (err) {
+      console.warn('Reconnect failed, will retry', err);
+      updateConnectionStatus('Reconnect failed', 'error');
+      const nextDelay = Math.min(30000, 1000 * Math.pow(2, Math.min(reconnectAttempts, 6)));
+      scheduleReconnect(nextDelay);
+    }
+  }, delayMs);
+}
+
+// Connect button flow
+async function onConnectButtonClick() {
+  if (!navigator.bluetooth) {
+    updateConnectionStatus('Bluetooth not supported','error');
+    alert('Web Bluetooth is not available in this browser. Use Chrome on Android for BLE support.');
+    return;
+  }
+  DOM.connectButton.disabled = true;
+  try {
+    updateConnectionStatus('Requesting device...','connecting');
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }],
+      optionalServices: [SERVICE_UUID]
+    });
+    if (!bleDevice) {
+      updateConnectionStatus('No device selected','disconnected');
+      DOM.connectButton.disabled = false;
+      return;
+    }
+    updateConnectionStatus('Connecting...','connecting');
+    bleDevice.addEventListener('gattserverdisconnected', onGATTServerDisconnected);
+    bleServer = await bleDevice.gatt.connect();
+    const service = await bleServer.getPrimaryService(SERVICE_UUID);
+    bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+    await bleCharacteristic.startNotifications();
+    bleCharacteristic.addEventListener('characteristicvaluechanged', handleCharacteristicNotification);
+    updateConnectionStatus(`Connected to ${bleDevice.name || 'Device'}`, 'connected');
+    DOM.connectButton.disabled = true;
+    DOM.disconnectButton.disabled = false;
+    startSession();
+    calcStartAt = Date.now() + CALC_DELAY_MS;
+    calculationEnabled = false;
+    reconnectAttempts = 0;
+  } catch (e) {
+    console.error('Connect error', e);
+    updateConnectionStatus('Connection failed','error');
+    DOM.connectButton.disabled = false;
+    try { if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); } catch(_) {}
+  }
+}
+
+// Disconnect button
+function onDisconnectButtonClick() {
+  try {
+    if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+    else onGATTServerDisconnected();
+  } catch (e) {
+    onGATTServerDisconnected();
+  }
+}
+
+function onGATTServerDisconnected() {
+  updateConnectionStatus('Disconnected','disconnected');
+  DOM.connectButton.disabled = false;
+  DOM.disconnectButton.disabled = true;
+  if (bleCharacteristic && typeof bleCharacteristic.removeEventListener === 'function') {
+    try { bleCharacteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicNotification); } catch (e) {}
+  }
+  if (bleDevice && bleDevice.gatt && !bleDevice.gatt.connected) {
+    scheduleReconnect(1500);
+  }
+  bleServer = null; bleCharacteristic = null;
+  stopSession(); resetUI();
+}
+
+// Notification handler + parser (robust)
+function handleCharacteristicNotification(evt) {
+  try {
+    if (!evt.target || !evt.target.value) return;
+    const raw = new TextDecoder().decode(evt.target.value).trim();
+    if (!raw) return;
+    const data = parseDataString(raw);
+    if (!data || Object.keys(data).length === 0) return;
+
+    const analysisData = {
+      lat: (data['Lat'] !== undefined) ? parseFloat(data['Lat']) || null : (data._csv && data._csv.lat) ? data._csv.lat : null,
+      lon: (data['Lon'] !== undefined) ? parseFloat(data['Lon']) || null : (data._csv && data._csv.lon) ? data._csv.lon : null,
+      spd: parseFloat(data['Spd']) || 0,
+      alt: parseFloat(data['Alt']) || 0,
+      dist: parseFloat(data['Dist']) || 0,
+      sats: parseInt(data['Sats']) || 0,
+      ax: parseFloat(data['AX']) || 0, ay: parseFloat(data['AY']) || 0, az: parseFloat(data['AZ']) || 0,
+      gx: parseFloat(data['GX']) || 0, gy: parseFloat(data['GY']) || 0, gz: parseFloat(data['GZ']) || 0,
+      prox: (data['Prox'] !== undefined) ? (isNaN(parseFloat(data['Prox'])) ? null : parseFloat(data['Prox'])) : null
+    };
+
+    // Update speed UI
+    DOM.speedValue.textContent = (analysisData.spd || 0).toFixed(1);
+
+    // GPS warmup & map handling
+    if (analysisData.lat !== null && analysisData.lon !== null) {
+      if (!calculationEnabled) {
+        if (Date.now() >= calcStartAt) {
+          calculationEnabled = true;
+          pathLatLngs = [[analysisData.lat, analysisData.lon]];
+          session.traveledMeters = 0;
+          if (map) {
+            if (pathPolyline) pathPolyline.remove();
+            pathPolyline = L.polyline(pathLatLngs, { color: '#ffffff', weight: 4, opacity: 0.9 }).addTo(map);
+          }
+        } else {
+          updateMarkerOnly(analysisData.lat, analysisData.lon);
+        }
+      }
+      if (calculationEnabled) updateMapPositionWithPath(analysisData.lat, analysisData.lon);
+    }
+
+    // Analyses
+    checkCrash(analysisData.gx, analysisData.gy, analysisData.gz);
+    updateTerrainHistory(analysisData.ax, analysisData.ay, analysisData.az);
+    checkTerrain();
+    if (analysisData.prox !== null) checkProximity(analysisData.prox);
+    if (calculationEnabled) updateSessionStats(analysisData);
+  } catch (err) {
+    console.warn('Notification handler error', err);
+  }
+}
+
+// Parse key:value or CSV fallback
+function parseDataString(s) {
+  if (!s) return null;
+  const obj = {};
+  const pairs = s.split(',');
+  let kvCount = 0;
+  for (let p of pairs) {
+    const idx = p.indexOf(':');
+    if (idx > -1) {
+      const key = p.slice(0, idx).trim();
+      const val = p.slice(idx+1).trim();
+      if (key.length && val.length) {
+        obj[key] = val;
+        kvCount++;
+      }
+    }
+  }
+  if (kvCount > 0) return obj;
+
+  // fallback CSV: lat,lon,spd,alt,prox...
+  const csv = s.split(',').map(x => x.trim()).filter(x=>x.length>0);
+  if (csv.length >= 2) {
+    const csvObj = {};
+    csvObj.lat = parseFloat(csv[0]) || null;
+    csvObj.lon = parseFloat(csv[1]) || null;
+    if (csv.length >= 3) csvObj.spd = parseFloat(csv[2]) || 0;
+    if (csv.length >= 4) csvObj.alt = parseFloat(csv[3]) || 0;
+    if (csv.length >= 5) csvObj.prox = parseFloat(csv[4]) || null;
+    return { _csv: csvObj };
+  }
+  return {};
+}
+
+// Map init and helpers
+function initializeMap(lat, lon) {
+  if (map) return;
+  try {
+    map = L.map(DOM.map, { zoomControl: false, attributionControl: false }).setView([lat, lon], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map);
+    const pulsingIcon = L.divIcon({ className: 'gps-marker-icon', html: '<div class="gps-ring"></div>', iconSize: [24,24], iconAnchor: [12,12] });
+    mapMarker = L.marker([lat, lon], { icon: pulsingIcon }).addTo(map);
+    pathLatLngs = [[lat, lon]];
+    if (pathPolyline) pathPolyline.remove();
+    pathPolyline = L.polyline(pathLatLngs, { color: '#ffffff', weight: 4, opacity: 0.9 }).addTo(map);
+  } catch (e) {
+    console.error('Map init failed', e);
+  }
+}
+
+function updateMarkerOnly(lat, lon) {
+  if (!map || !mapMarker) { initializeMap(lat, lon); if (!map) return; }
+  const newLatLng = [lat, lon];
+  mapMarker.setLatLng(newLatLng);
+  try { map.setView(newLatLng, 17, { animate: true, pan: { duration: 0.5 } }); } catch(e) {}
+}
+
+function updateMapPositionWithPath(lat, lon) {
+  if (!map || !mapMarker) { initializeMap(lat, lon); if (!map) return; }
+  const newLatLng = [lat, lon];
+  mapMarker.setLatLng(newLatLng);
+
+  const last = pathLatLngs.length ? pathLatLngs[pathLatLngs.length - 1] : null;
+  let shouldAdd = true;
+  if (last) {
+    const d = distanceMeters(last[0], last[1], lat, lon);
+    if (d < PATH_MIN_DISTANCE_M) shouldAdd = false;
+  }
+  if (shouldAdd) {
+    pathLatLngs.push(newLatLng);
+    if (pathPolyline) pathPolyline.setLatLngs(pathLatLngs);
+    else pathPolyline = L.polyline(pathLatLngs, { color: '#ffffff', weight: 4, opacity: 0.9 }).addTo(map);
+    if (last) {
+      const d = distanceMeters(last[0], last[1], lat, lon);
+      session.traveledMeters += d;
+      session.totalDistanceCM = Math.round(session.traveledMeters * 100);
+      DOM.summaryDistance.textContent = `${(session.traveledMeters/1000).toFixed(2)} km`;
+    }
+  }
+
+  const now = Date.now();
+  let movedMeters = 0;
+  if (lastViewLatLng) movedMeters = distanceMeters(lastViewLatLng[0], lastViewLatLng[1], lat, lon);
+  if (!lastViewLatLng || ((now - lastViewTs) > MAP_VIEW_MIN_MS && movedMeters >= MAP_VIEW_MIN_M)) {
+    try {
+      map.setView(newLatLng, Math.max(map.getZoom(), 16), { animate: true, pan: { duration: 0.4 } });
+    } catch(e) {
+      try { map.setView(newLatLng); } catch(_) {}
+    }
+    lastViewLatLng = newLatLng.slice();
+    lastViewTs = now;
+  }
+}
+
+// haversine
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const toRad = x => x * Math.PI / 180;
+  const R = 6371000;
+  const dLat = toRad(lat2-lat1); const dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)*Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// Crash detection
+let crashDetected = false;
+function checkCrash(gx, gy, gz) {
+  const isCrash = Math.abs(gx) > CRASH_DETECTION_THRESHOLD || Math.abs(gy) > CRASH_DETECTION_THRESHOLD || Math.abs(gz) > CRASH_DETECTION_THRESHOLD;
+  if (isCrash && !crashDetected) {
+    crashDetected = true;
+    DOM.crashStatus.textContent = 'CRASH!';
+    DOM.crashPanel.classList.remove('bg-green-500/10','border-green-500/30');
+    DOM.crashPanel.classList.add('bg-red-500/10','border-red-500/30');
+    showEmergencyOverlay();
+  } else if (!isCrash && !crashDetected) {
+    DOM.crashStatus.textContent = 'SAFE';
+    DOM.crashPanel.classList.remove('bg-red-500/10','border-red-500/30');
+    DOM.crashPanel.classList.add('bg-green-500/10','border-green-500/30');
+  }
+}
+
+function showEmergencyOverlay() {
+  let emergencyOverlay = document.getElementById('emergencyOverlay');
+  if (emergencyOverlay) return;
+  emergencyOverlay = document.createElement('div');
+  emergencyOverlay.id = 'emergencyOverlay';
+  emergencyOverlay.innerHTML = `
+    <h1 style="font-size:36px;font-weight:800;margin-bottom:20px;">CRASH DETECTED!</h1>
+    <p style="font-size:18px;margin-bottom:20px;">Are you okay?</p>
+    <button id="callEmergency" style="padding:14px 24px;margin-bottom:12px;border-radius:9999px;background:white;color:#b91c1c;font-weight:700;">Call Emergency Services</button>
+    <br/>
+    <button id="dismissEmergency" style="padding:10px 18px;border-radius:9999px;background:rgba(255,255,255,0.85);">Dismiss</button>
+  `;
+  document.body.appendChild(emergencyOverlay);
+  document.getElementById('callEmergency').addEventListener('click', () => {
+    console.log('Call emergency - open tel: link or handle in native wrapper');
+    dismissEmergencyOverlay();
+  });
+  document.getElementById('dismissEmergency').addEventListener('click', dismissEmergencyOverlay);
+}
+
+function dismissEmergencyOverlay() {
+  const overlay = document.getElementById('emergencyOverlay');
+  if (!overlay) return;
+  const callBtn = document.getElementById('callEmergency');
+  const dismissBtn = document.getElementById('dismissEmergency');
+  if (callBtn) try { callBtn.removeEventListener('click', dismissEmergencyOverlay); } catch(e) {}
+  if (dismissBtn) try { dismissBtn.removeEventListener('click', dismissEmergencyOverlay); } catch(e) {}
+  overlay.remove();
+  crashDetected = false;
+  DOM.crashStatus.textContent = 'SAFE';
+  DOM.crashPanel.classList.remove('bg-red-500/10','border-red-500/30');
+  DOM.crashPanel.classList.add('bg-green-500/10','border-green-500/30');
+}
+
+// Terrain
+function updateTerrainHistory(ax, ay, az) {
+  terrainHistory.ax.push(ax); terrainHistory.ay.push(ay); terrainHistory.az.push(az);
+  if (terrainHistory.ax.length > TERRAIN_HISTORY_LENGTH) terrainHistory.ax.shift();
+  if (terrainHistory.ay.length > TERRAIN_HISTORY_LENGTH) terrainHistory.ay.shift();
+  if (terrainHistory.az.length > TERRAIN_HISTORY_LENGTH) terrainHistory.az.shift();
+}
+function calculateVariance(arr) {
+  if (!arr || arr.length < 2) return 0;
+  const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+  return arr.reduce((acc,val)=>acc+Math.pow(val-mean,2),0)/arr.length;
+}
+function checkTerrain() {
+  if (terrainHistory.ax.length < TERRAIN_HISTORY_LENGTH) return;
+  const varAX = calculateVariance(terrainHistory.ax);
+  const varAY = calculateVariance(terrainHistory.ay);
+  const varAZ = calculateVariance(terrainHistory.az);
+  const totalVariance = varAX + varAY + varAZ;
+  DOM.terrainPanel.classList.remove('bg-green-500/10','border-green-500/30','bg-yellow-500/10','border-yellow-500/30','bg-red-500/10','border-red-500/30');
+  if (totalVariance > TERRAIN_ROUGH_THRESHOLD) {
+    DOM.terrainStatus.textContent = 'ROUGH';
+    DOM.terrainPanel.classList.add('bg-red-500/10','border-red-500/30');
+  } else if (totalVariance > TERRAIN_MODERATE_THRESHOLD) {
+    DOM.terrainStatus.textContent = 'MODERATE';
+    DOM.terrainPanel.classList.add('bg-yellow-500/10','border-yellow-500/30');
+  } else {
+    DOM.terrainStatus.textContent = 'SMOOTH';
+    DOM.terrainPanel.classList.add('bg-green-500/10','border-green-500/30');
+  }
+}
+
+// Proximity
+function checkProximity(distanceCM) {
+  if (distanceCM === null || isNaN(distanceCM)) return;
+  let newState = 'green';
+  if (distanceCM >= PROX_SAFE_THRESHOLD) newState = 'green';
+  else if (distanceCM >= PROX_WARNING_THRESHOLD) newState = 'yellow';
+  else newState = 'red';
+  if (DOM.overlayProxValue) DOM.overlayProxValue.textContent = Math.round(distanceCM);
+  if (DOM.proxDotSmall) {
+    DOM.proxDotSmall.classList.remove('prox-green','prox-yellow','prox-red','prox-pulse');
+    if (newState === 'green') DOM.proxDotSmall.classList.add('prox-green');
+    else if (newState === 'yellow') DOM.proxDotSmall.classList.add('prox-yellow');
+    else DOM.proxDotSmall.classList.add('prox-red','prox-pulse');
+  }
+  const now = Date.now();
+  if (newState === 'red' && proxState !== 'red' && (now - lastProxAlertTs) > 3000) {
+    playBeep(); lastProxAlertTs = now;
+  }
+  proxState = newState;
+}
+
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 700; g.gain.value = 0.04;
+    o.connect(g); g.connect(ctx.destination); o.start();
+    setTimeout(()=>{ o.stop(); ctx.close(); },220);
+  } catch(e) { console.warn('Beep failed', e); }
+}
+
+// Session & manual timer
+function startSession() {
+  stopSession();
+  session.startTime = Date.now();
+  session.maxSpeed = 0; session.totalSpeed = 0; session.speedReadings = 0; session.totalDistanceCM = 0; session.totalCalories = 0; session.traveledMeters = 0;
+}
+function stopSession() {
+  if (session.durationInterval) { clearInterval(session.durationInterval); session.durationInterval = null; }
+}
+
+function startManualTimer() {
+  if (manualTimer.running) return;
+  manualTimer.running = true; manualTimer.startTs = Date.now();
+  manualTimer.interval = setInterval(() => updateManualTimerDisplay(), 250);
+}
+function stopManualTimer() {
+  if (!manualTimer.running) return;
+  manualTimer.running = false;
+  clearInterval(manualTimer.interval); manualTimer.interval = null;
+  manualTimer.elapsedBefore += Date.now() - manualTimer.startTs;
+  updateManualTimerDisplay();
+}
+function resetManualTimer() {
+  manualTimer.running = false; clearInterval(manualTimer.interval); manualTimer.interval = null; manualTimer.startTs = 0; manualTimer.elapsedBefore = 0;
+  updateManualTimerDisplay();
+}
+function updateManualTimerDisplay() {
+  const elapsed = manualTimer.elapsedBefore + (manualTimer.running ? (Date.now() - manualTimer.startTs) : 0);
+  const totalSeconds = Math.floor(elapsed/1000);
+  const hours = Math.floor(totalSeconds/3600);
+  const minutes = Math.floor((totalSeconds%3600)/60);
+  const seconds = totalSeconds%60;
+  DOM.summaryDuration.textContent = [hours.toString().padStart(2,'0'), minutes.toString().padStart(2,'0'), seconds.toString().padStart(2,'0')].join(':');
+}
+
+function updateSessionStats(data) {
+  if (!calculationEnabled) return;
+  if (data.spd > session.maxSpeed) {
+    session.maxSpeed = data.spd; DOM.summaryMaxSpeed.textContent = `${session.maxSpeed.toFixed(1)} km/h`;
+  }
+  session.totalSpeed += data.spd; session.speedReadings++;
+  const avgSpeed = session.speedReadings > 0 ? session.totalSpeed / session.speedReadings : 0;
+  DOM.summaryAvgSpeed.textContent = `${avgSpeed.toFixed(1)} km/h`;
+
+  if (session.traveledMeters > 0) {
+    DOM.summaryDistance.textContent = `${(session.traveledMeters/1000).toFixed(2)} km`;
+    session.totalDistanceCM = Math.round(session.traveledMeters * 100);
+  } else {
+    session.totalDistanceCM = data.dist || 0;
+    const distKm = (session.totalDistanceCM / 100 / 1000);
+    DOM.summaryDistance.textContent = `${distKm.toFixed(2)} km`;
+  }
+  session.totalCalories = (session.traveledMeters/1000) * KcalPerKm;
+  const calValue = Math.round(session.totalCalories);
+  DOM.overlayCaloriesValue.textContent = isFinite(calValue) ? calValue : '--';
+}
+
+function resetUI() {
+  dismissEmergencyOverlay();
+  DOM.speedValue.textContent = '--';
+  DOM.crashStatus.textContent = 'SAFE';
+  DOM.crashPanel.className = 'bg-white/20 border-green-500/40 border-2 rounded-2xl shadow p-4 backdrop-blur-lg';
+  DOM.terrainStatus.textContent = 'SMOOTH';
+  DOM.terrainPanel.className = 'bg-white/20 border-green-500/40 border-2 rounded-2xl shadow p-4 backdrop-blur-lg';
+  DOM.summaryDuration.textContent = '--:--:--';
+  DOM.summaryDistance.textContent = '-- km';
+  DOM.summaryAvgSpeed.textContent = '-- km/h';
+  DOM.summaryMaxSpeed.textContent = '-- km/h';
+  DOM.overlayCaloriesValue.textContent = '--';
+  DOM.overlayProxValue.textContent = '--';
+  if (DOM.proxDotSmall) DOM.proxDotSmall.className = 'prox-dot prox-green';
+  resetManualTimer();
+  if (pathPolyline) { pathPolyline.remove(); pathPolyline = null; }
+  pathLatLngs = []; session.traveledMeters = 0; calculationEnabled = false;
+}
+
+  </script>
+
+  <!-- Install Service Worker -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/service-worker.js");
+    }
+  </script>
+
+</body>
+</html>

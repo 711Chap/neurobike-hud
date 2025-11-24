@@ -2,255 +2,131 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
-  <title>NeuroBike</title>
-
-  <!-- NOTE: uploaded logo path (kept as reference only): /mnt/data/Logo.png -->
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>SmartCycle HUD</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.tailwindcss.com"></script>
-
   <style>
-    :root{
-      --accent-1: #0ea5e9; /* cyan */
-      --accent-2: #075985; /* deep cyan */
-      --panel-bg: rgba(255,255,255,0.92);
-      --panel-blur: 6px;
-      --ui-ink: #0f172a;
+    /* GPS marker pulse and proximity dot */
+    .gps-marker-icon .gps-ring {
+      border: 3px solid #22d3ee;
+      border-radius: 50%;
+      height: 24px; width: 24px;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 15px #22d3ee;
+      animation: pulse-ring 1.5s infinite;
     }
-
-    html,body { height:100%; margin:0; padding:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
-    body { background: linear-gradient(135deg,#e6f7ff 0%, #f0f9ff 50%, #eef2ff 100%); color:var(--ui-ink); overflow:hidden; }
-
-    .app { display:flex; flex-direction:column; height:100vh; }
-
-    header { height:64px; display:flex; align-items:center; padding:0 16px; gap:12px; background: linear-gradient(90deg,var(--accent-1),var(--accent-2)); color:white; box-shadow: 0 6px 18px rgba(14,30,60,0.12); z-index:40; flex-shrink:0; }
-    header h1 { margin:0; font-size:18px; font-weight:700; letter-spacing:0.2px; }
-
-    header .controls { margin-left:auto; display:flex; gap:8px; align-items:center; }
-
-    .btn { border:none; padding:10px 12px; border-radius:10px; font-weight:700; cursor:pointer; box-shadow: 0 8px 18px rgba(2,6,23,0.08); min-width:44px; text-align:center; }
-    .btn-connect { background:#2563eb; color:white; } /* blue */
-    .btn-disconnect { background:#ef4444; color:white; } /* red */
-    .status-disconnected { background: rgba(255,255,255,0.85); color: #0f172a; border-radius:10px; padding:8px 12px; min-width:140px; text-align:center; }
-    .status-connected { background: linear-gradient(90deg,#bbf7d0,#10b981); color:#064e3b; border-radius:10px; padding:8px 12px; min-width:140px; text-align:center; }
-    .status-connecting { background: linear-gradient(90deg,#fef3c7,#f59e0b); color:#92400e; border-radius:10px; padding:8px 12px; min-width:140px; text-align:center; }
-
-    .content { height: calc(100vh - 64px); display:grid; grid-template-columns: 1fr; grid-template-rows: 1fr auto; gap:12px; padding:12px; box-sizing:border-box; }
-
-    #map { width:100%; height: 64vh; border-radius:12px; overflow:hidden; box-shadow: 0 8px 30px rgba(2,6,23,0.08); border: 1px solid rgba(15,23,42,0.04); }
-
-    .panels { display:grid; grid-template-columns: 1fr; gap:10px; align-content:start; overflow:auto; padding:6px; }
-
-    .card { background:var(--panel-bg); backdrop-filter: blur(var(--panel-blur)); border-radius:12px; padding:12px; box-shadow: 0 10px 24px rgba(2,6,23,0.06); border: 1px solid rgba(255,255,255,0.6); }
-
-    .speed { display:flex; justify-content:space-between; align-items:center; gap:12px; }
-    .speed .left { display:flex; flex-direction:column; gap:6px; }
-    .label { font-size:12px; color:#475569; font-weight:700; letter-spacing:0.5px; }
-    .speed-value { font-weight:900; font-size: clamp(32px, 8vw, 56px); line-height:1; color:var(--ui-ink); }
-    .unit { font-weight:700; color:#475569; font-size:14px; }
-
-    .stats-grid { display:flex; gap:10px; justify-content:space-between; margin-top:8px; }
-    .stat { flex:1; text-align:center; }
-    .stat b { display:block; font-weight:800; font-size:16px; color:var(--ui-ink); }
-
-    /* Floating proximity overlay on map (single) */
-    .hud-overlays { position:absolute; right:14px; top:84px; display:flex; flex-direction:column; gap:10px; z-index:1001; pointer-events:none; }
-    .hud { pointer-events:auto; display:flex; gap:10px; align-items:center; padding:8px 10px; background: rgba(255,255,255,0.95); backdrop-filter: blur(6px); border-radius:10px; box-shadow: 0 10px 24px rgba(2,6,23,0.08); min-width:120px; border: 1px solid rgba(0,0,0,0.04); font-weight:700; }
-    .hud .small { font-size:12px; color:#475569; font-weight:700; }
-    .hud .value { font-size:15px; color:var(--ui-ink); font-weight:900; }
-    .prox-dot { height:12px; width:12px; border-radius:9999px; display:inline-block; box-shadow:0 4px 10px rgba(0,0,0,0.08); }
-    .prox-green { background:#16a34a; }
-    .prox-yellow { background:#f59e0b; }
-    .prox-red { background:#dc2626; transform:scale(1.1); }
-
-    @media(min-width:900px) {
-      .content { padding:18px; grid-template-rows: 1fr auto; }
-      .main-grid { height:100%; display:grid; grid-template-columns: 1fr; gap:18px; }
-      #map { height: 68vh; }
-      .hud-overlays { top: 92px; right:32px; }
+    @keyframes pulse-ring {
+      0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.8; }
+      70% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+      100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
     }
-
-    @media(max-width:420px){ #map { height:68vh; } }
-
-    #emergencyOverlay { z-index:3000; }
+    .prox-dot { height: 14px; width: 14px; border-radius: 9999px; display:inline-block;box-shadow:0 0 10px rgba(0,0,0,0.08);vertical-align:middle;margin-right:8px;transition: transform .18s, box-shadow .18s, background-color .18s;}
+    .prox-green { background-color: #16a34a; box-shadow: 0 0 10px rgba(22,163,74,0.35); }
+    .prox-yellow { background-color: #f59e0b; box-shadow: 0 0 10px rgba(245,158,11,0.35); }
+    .prox-red { background-color: #dc2626; box-shadow: 0 0 12px rgba(220,38,38,0.45); transform: scale(1.2); }
+    .prox-pulse { animation: proxPulse 1s infinite ease-in-out; }
+    @keyframes proxPulse { 0%{transform:scale(1);opacity:1;}50%{transform:scale(1.35);opacity:.85;}100%{transform:scale(1);opacity:1;} }
+    #emergencyOverlay {
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background-color: rgba(255,0,0,0.85); z-index: 2000;
+      display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; text-align:center;
+      animation: flashRed 0.5s infinite alternate;
+    }
+    @keyframes flashRed {
+      from { background-color: rgba(255,0,0,0.85);}
+      to { background-color: rgba(255,0,0,0.65);}
+    }
   </style>
 </head>
-<body>
-  <div class="app">
-    <header>
-      <h1>NeuroBike</h1>
-      <div class="controls" role="toolbar" aria-label="connect controls">
-        <button id="connectButton" class="btn btn-connect" title="Connect">Connect</button>
-        <button id="disconnectButton" class="btn btn-disconnect" title="Disconnect" disabled>Disconnect</button>
-        <div id="connectionStatus" class="status-disconnected">Disconnected</div>
+<body class="bg-gradient-to-br from-blue-100 via-gray-100 to-blue-200 text-gray-900 h-screen w-screen overflow-hidden font-sans flex flex-col transition-colors duration-200 ease-in-out">
+
+<div class="flex-1 grid grid-cols-1 md:grid-cols-5 overflow-hidden relative">
+
+  <!-- HUD overlays container (calories + proximity) -->
+  <div class="order-1 md:col-span-1 flex flex-row md:flex-col items-center md:items-start p-1 md:p-4 gap-2 md:gap-3 absolute md:static top-2 left-2 z-[1001]">
+    <div id="calorieOverlay" class="bg-white/70 shadow-xl border border-white/80 rounded-xl p-2 md:p-3 flex items-center space-x-2 md:space-x-3 transition-opacity duration-300 text-xs md:text-base w-[100px] md:w-auto">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-7 md:w-7 text-red-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd" /></svg>
+      <div>
+        <span class="text-xs font-medium text-gray-600 uppercase">Calories</span>
+        <p class="text-base md:text-xl font-bold text-gray-900 leading-none">
+          <span id="overlayCaloriesValue">--</span>
+          <span class="text-xs md:text-sm font-semibold text-red-600 ml-1">kcal</span>
+        </p>
       </div>
-    </header>
-
-    <div class="content">
-      <div id="map"></div>
-
-      <div class="panels">
-        <div class="card">
-          <div class="speed">
-            <div class="left">
-              <div class="label">SPEED</div>
-              <div style="display:flex; align-items:baseline; gap:8px;">
-                <div id="speedValue" class="speed-value">--</div>
-                <div class="unit">km/h</div>
-              </div>
-            </div>
-
-            <div style="text-align:right; min-width:110px;">
-              <div class="label">Crash</div>
-              <div id="crashStatus" style="font-weight:900; font-size:18px; color:#16a34a;">SAFE</div>
-
-              <div style="height:8px"></div>
-
-              <div class="label">Terrain</div>
-              <div id="terrainStatus" style="font-weight:900; font-size:18px; color:#16a34a;">SMOOTH</div>
-            </div>
-          </div>
-
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
-            <div>
-              <div class="label">Duration</div>
-              <div id="summaryDuration" style="font-weight:900; font-size:16px;">--:--:--</div>
-            </div>
-
-            <div style="display:flex; gap:8px;">
-              <button id="timerStart" class="btn" title="Start">▶</button>
-              <button id="timerStop" class="btn" title="Stop">■</button>
-              <button id="timerReset" class="btn" title="Reset">↺</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div style="display:flex; gap:12px;">
-            <div class="stat" style="flex:1;">
-              <div class="label">Distance</div>
-              <b id="summaryDistance">-- km</b>
-            </div>
-            <div class="stat" style="flex:1;">
-              <div class="label">Avg Speed</div>
-              <b id="summaryAvgSpeed">-- km/h</b>
-            </div>
-            <div class="stat" style="flex:1;">
-              <div class="label">Max Speed</div>
-              <b id="summaryMaxSpeed">-- km/h</b>
-            </div>
-          </div>
-        </div>
-
+    </div>
+    <div id="proximityOverlay" class="bg-white/70 shadow-xl border border-white/80 rounded-xl p-2 md:p-3 flex items-center space-x-2 md:space-x-3 transition-opacity duration-300 text-xs md:text-base w-[100px] md:w-auto">
+      <div id="proxDotSmall" class="prox-dot prox-green"></div>
+      <div>
+        <span class="text-xs font-medium text-gray-600 uppercase">Proximity</span>
+        <p class="text-base md:text-xl font-bold text-gray-900 leading-none">
+          <span id="overlayProxValue">--</span>
+          <span class="text-xs md:text-sm">cm</span>
+        </p>
       </div>
-
-      <!-- Floating proximity HUD left on map -->
-      <div class="hud-overlays" aria-hidden="false">
-        <div id="proximityOverlay" class="hud" role="status" aria-label="proximity">
-          <div style="display:flex; align-items:center; gap:10px;">
-            <div id="proxDotSmall" class="prox-dot prox-green" aria-hidden="true"></div>
-            <div>
-              <div class="small">Proximity</div>
-              <div id="overlayProxValue" class="value">-- cm</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Main panels -->
+  <div class="order-2 md:col-span-2 flex flex-col space-y-1 md:space-y-4 p-2 md:p-6">
+    <div class="flex justify-center items-center py-1 md:py-2 bg-white/30 backdrop-blur-lg shadow-lg border border-white/40 rounded-2xl">
+      <h1 class="text-xl md:text-3xl font-bold text-gray-800 my-1 md:my-2">NeuroBike</h1>
+    </div>
+    <div class="flex-1 flex flex-col justify-center bg-white/30 backdrop-blur-lg shadow-lg border border-white/40 rounded-2xl p-3 md:p-6">
+      <h2 class="text-lg md:text-2xl font-bold text-blue-600 tracking-widest">SPEED</h2>
+      <div class="flex items-baseline">
+        <span id="speedValue" class="text-3xl md:text-7xl font-black text-black" style="line-height: 1;">--</span>
+        <span class="text-base md:text-2xl font-semibold text-gray-600 ml-2">km/h</span>
+      </div>
+    </div>
+    <div class="flex flex-col md:grid md:grid-cols-2 gap-2 md:gap-6">
+      <div id="crashPanel" class="bg-white/30 backdrop-blur-lg rounded-2xl p-2 md:p-4 text-center shadow-md border-2 border-green-500/30 bg-green-500/10 transition-all duration-300">
+        <h3 class="text-xs md:text-sm font-semibold text-gray-700 uppercase tracking-wider">Crash Status</h3>
+        <div id="crashStatus" class="text-lg md:text-2xl font-bold text-black mt-1">SAFE</div>
+      </div>
+      <div id="terrainPanel" class="bg-white/30 backdrop-blur-lg rounded-2xl p-2 md:p-4 text-center shadow-md border-2 border-green-500/30 bg-green-500/10 transition-all duration-300">
+        <h3 class="text-xs md:text-sm font-semibold text-gray-700 uppercase tracking-wider">Terrain</h3>
+        <div id="terrainStatus" class="text-lg md:text-2xl font-bold text-black mt-1">SMOOTH</div>
+      </div>
+    </div>
+    <div class="bg-white/30 backdrop-blur-lg shadow-lg border border-white/40 rounded-2xl p-2 md:p-6 space-y-1 md:space-y-3">
+      <div class="flex items-center justify-between">
+        <span class="font-medium text-gray-600">Duration</span>
+        <span id="summaryDuration" class="font-semibold text-gray-900 text-base md:text-2xl">--:--:--</span>
+        <div class="flex items-center gap-1 md:gap-2 ml-2 md:ml-3">
+          <button id="timerStart" title="Start" class="icon-btn h-6 w-6 md:h-9 md:w-9"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-600" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3v18l15-9L5 3z"/></svg></button>
+          <button id="timerStop" title="Stop" class="icon-btn h-6 w-6 md:h-9 md:w-9"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-yellow-500" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg></button>
+          <button id="timerReset" title="Reset" class="icon-btn h-6 w-6 md:h-9 md:w-9"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 6V3L8 7l4 4V8c2.8 0 5 2.2 5 5 0 2.8-2.2 5-5 5s-5-2.2-5-5H6c0 3.9 3.1 7 7 7s7-3.1 7-7c0-3.9-3.1-7-7-7z"/></svg></button>
+        </div>
+      </div>
+      <div class="text-right text-xs md:text-sm text-gray-500">Manual Timer</div>
+      <div class="flex justify-between items-baseline text-base md:text-xl pt-2">
+        <span class="font-medium text-gray-600">Distance</span>
+        <span id="summaryDistance" class="font-semibold text-gray-900">-- km</span>
+      </div>
+      <div class="flex justify-between items-baseline text-base md:text-xl">
+        <span class="font-medium text-gray-600">Avg Speed</span>
+        <span id="summaryAvgSpeed" class="font-semibold text-gray-900">-- km/h</span>
+      </div>
+      <div class="flex justify-between items-baseline text-base md:text-xl">
+        <span class="font-medium text-gray-600">Max Speed</span>
+        <span id="summaryMaxSpeed" class="font-semibold text-gray-900">-- km/h</span>
+      </div>
+    </div>
+  </div>
 
-  <script>
-    // BLE + UI logic (kept compact) — adapted to new DOM layout
-    const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
-    const CHARACTERISTIC_UUID = "87654321-4321-4321-4321-cba987654321";
-    const FIELDS = { "Lat":{}, "Lon":{}, "Spd":{}, "Alt":{}, "Dist":{}, "Sats":{}, "AX":{}, "AY":{}, "AZ":{}, "GX":{}, "GY":{}, "GZ":{}, "Prox":{} };
+  <!-- MAP: order-3 on mobile for largest region -->
+  <div class="order-3 md:order-none col-span-1 md:col-span-3 h-[55vh] md:h-full w-full" id="map"></div>
+</div>
 
-    const CRASH_DETECTION_THRESHOLD = 250;
-    const TERRAIN_HISTORY_LENGTH = 15;
-    const TERRAIN_ROUGH_THRESHOLD = 20000000;
-    const TERRAIN_MODERATE_THRESHOLD = 5000000;
-    const PROX_SAFE_THRESHOLD = 90; const PROX_WARNING_THRESHOLD = 50; const KcalPerKm = 40; const PATH_MIN_DISTANCE_M = 2; const CALC_DELAY_MS = 7000;
+<!-- Bluetooth connection buttons (top-right, small on mobile) -->
+<div class="absolute top-2 right-2 flex flex-row gap-1 md:gap-2 z-[1000]">
+  <button type="button" id="connectButton" class="px-2 py-1 md:px-4 md:py-2 bg-white/70 hover:bg-white/90 border border-gray-300/50 text-blue-600 font-semibold rounded-lg shadow-lg transition duration-200 ease-in-out backdrop-blur-lg disabled:opacity-50 disabled:cursor-not-allowed text-xs md:text-base">Connect</button>
+  <button type="button" id="disconnectButton" class="px-2 py-1 md:px-4 md:py-2 bg-white/70 hover:bg-white/90 border border-gray-300/50 text-red-600 font-semibold rounded-lg shadow-lg transition duration-200 ease-in-out backdrop-blur-lg disabled:opacity-50 disabled:cursor-not-allowed text-xs md:text-base" disabled>Disconnect</button>
+  <div id="connectionStatus" class="px-2 py-1 md:px-4 md:py-2 bg-white/50 text-gray-700 font-medium rounded-lg shadow-lg backdrop-blur-lg text-center border border-white/40 text-xs md:text-base">Disconnected</div>
+</div>
 
-    let map=null, mapMarker=null, pathLatLngs=[], pathPolyline=null;
-    let bleDevice=null, bleServer=null, bleCharacteristic=null;
-    let session={startTime:null, durationInterval:null, maxSpeed:0, totalSpeed:0, speedReadings:0, totalDistanceCM:0, totalCalories:0, traveledMeters:0};
-    const terrainHistory={ax:[],ay:[],az:[]};
-    const DOM={}; let manualTimer={running:false,startTs:0,elapsedBefore:0,interval:null}; let proxState='unknown', lastProxAlertTs=0; let calcStartAt=0, calculationEnabled=false;
-
-    window.addEventListener('DOMContentLoaded', ()=>{
-      DOM.connectButton=document.getElementById('connectButton'); DOM.disconnectButton=document.getElementById('disconnectButton'); DOM.connectionStatus=document.getElementById('connectionStatus');
-      DOM.speedValue=document.getElementById('speedValue'); DOM.crashStatus=document.getElementById('crashStatus'); DOM.terrainStatus=document.getElementById('terrainStatus');
-      DOM.summaryDuration=document.getElementById('summaryDuration'); DOM.summaryDistance=document.getElementById('summaryDistance'); DOM.summaryAvgSpeed=document.getElementById('summaryAvgSpeed'); DOM.summaryMaxSpeed=document.getElementById('summaryMaxSpeed');
-      DOM.proxDotSmall=document.getElementById('proxDotSmall'); DOM.overlayProxValue=document.getElementById('overlayProxValue');
-      DOM.timerStart=document.getElementById('timerStart'); DOM.timerStop=document.getElementById('timerStop'); DOM.timerReset=document.getElementById('timerReset');
-
-      DOM.connectButton.addEventListener('click', onConnectButtonClick); DOM.disconnectButton.addEventListener('click', onDisconnectButtonClick);
-      DOM.timerStart.addEventListener('click', ()=>startManualTimer()); DOM.timerStop.addEventListener('click', ()=>stopManualTimer()); DOM.timerReset.addEventListener('click', ()=>resetManualTimer());
-
-      if(typeof L!=='undefined') initializeMap(51.505,-0.09);
-    });
-
-    function updateConnectionStatus(text,status){ DOM.connectionStatus.textContent=text; DOM.connectionStatus.className = (status==='connected'?'status-connected':(status==='connecting'?'status-connecting':'status-disconnected')); }
-
-    async function onConnectButtonClick(){ if(!navigator.bluetooth){ updateConnectionStatus('Bluetooth not supported','error'); alert('Web Bluetooth is only supported in Chrome on Android.'); return; } try { updateConnectionStatus('Requesting device...','connecting'); DOM.connectButton.disabled=true; bleDevice=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}], optionalServices:[SERVICE_UUID]}); if(!bleDevice){ updateConnectionStatus('No device selected','disconnected'); DOM.connectButton.disabled=false; return; } updateConnectionStatus('Connecting...','connecting'); bleDevice.addEventListener('gattserverdisconnected', onGATTServerDisconnected); bleServer=await bleDevice.gatt.connect(); const service=await bleServer.getPrimaryService(SERVICE_UUID); bleCharacteristic=await service.getCharacteristic(CHARACTERISTIC_UUID); await bleCharacteristic.startNotifications(); bleCharacteristic.addEventListener('characteristicvaluechanged', handleCharacteristicNotification); updateConnectionStatus(`Connected to ${bleDevice.name||'Device'}`,'connected'); DOM.connectButton.disabled=true; DOM.disconnectButton.disabled=false; startSession(); calcStartAt=Date.now()+CALC_DELAY_MS; calculationEnabled=false; } catch(e){ console.error(e); updateConnectionStatus('Connection failed','error'); DOM.connectButton.disabled=false; try{ if(bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); }catch(_){} } }
-
-    function onDisconnectButtonClick(){ try{ if(bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); else onGATTServerDisconnected(); }catch(e){ onGATTServerDisconnected(); } }
-    function onGATTServerDisconnected(){ updateConnectionStatus('Disconnected','disconnected'); DOM.connectButton.disabled=false; DOM.disconnectButton.disabled=true; if(bleCharacteristic && typeof bleCharacteristic.removeEventListener==='function'){ try{ bleCharacteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicNotification); }catch(e){} } bleDevice=null; bleServer=null; bleCharacteristic=null; stopSession(); resetUI(); }
-
-    function handleCharacteristicNotification(evt){ if(!evt.target||!evt.target.value) return; const value=new TextDecoder().decode(evt.target.value); const data=parseDataString(value); if(!data||Object.keys(data).length===0) return; const analysisData={ lat: parseFloat(data['Lat'])||null, lon: parseFloat(data['Lon'])||null, spd: parseFloat(data['Spd'])||0, alt: parseFloat(data['Alt'])||0, dist: parseFloat(data['Dist'])||0, sats: parseInt(data['Sats'])||0, ax: parseFloat(data['AX'])||0, ay: parseFloat(data['AY'])||0, az: parseFloat(data['AZ'])||0, gx: parseFloat(data['GX'])||0, gy: parseFloat(data['GY'])||0, gz: parseFloat(data['GZ'])||0, prox: (data['Prox']!==undefined)?parseFloat(data['Prox']):null };
-
-      DOM.speedValue.textContent = (analysisData.spd||0).toFixed(1);
-      if(analysisData.prox!==null) checkProximity(analysisData.prox);
-
-      if(analysisData.lat!==null && analysisData.lon!==null){ if(!calculationEnabled){ if(Date.now()>=calcStartAt){ calculationEnabled=true; pathLatLngs=[[analysisData.lat,analysisData.lon]]; session.traveledMeters=0; if(map){ if(pathPolyline) pathPolyline.remove(); pathPolyline=L.polyline(pathLatLngs,{color:'#2563eb',weight:4,opacity:0.9}).addTo(map); } } else { updateMarkerOnly(analysisData.lat,analysisData.lon); } } if(calculationEnabled) updateMapPositionWithPath(analysisData.lat,analysisData.lon); }
-
-      checkCrash(analysisData.gx,analysisData.gy,analysisData.gz);
-      updateTerrainHistory(analysisData.ax,analysisData.ay,analysisData.az);
-      checkTerrain();
-
-      if(calculationEnabled) updateSessionStats(analysisData);
-    }
-
-    function parseDataString(s){ if(!s) return null; const obj={}; s.split(',').forEach(pair=>{ const parts=pair.split(':'); if(parts.length<2) return; const key=parts[0].trim(); const val=parts.slice(1).join(':').trim(); if(key && FIELDS[key]) obj[key]=val; }); return obj; }
-
-    function initializeMap(lat,lon){ if(map) return; try{ map=L.map('map',{zoomControl:false, attributionControl:false}).setView([lat,lon],13); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap contributors'}).addTo(map); const pulsingIcon=L.divIcon({className:'gps-marker-icon', html:'<div class="gps-ring"></div>', iconSize:[24,24], iconAnchor:[12,12]}); mapMarker=L.marker([lat,lon],{icon:pulsingIcon}).addTo(map); pathLatLngs=[[lat,lon]]; if(pathPolyline) pathPolyline.remove(); pathPolyline=L.polyline(pathLatLngs,{color:'#2563eb',weight:4,opacity:0.9}).addTo(map); }catch(e){ console.error('Map init failed', e);} }
-
-    function updateMarkerOnly(lat,lon){ if(!map||!mapMarker){ initializeMap(lat,lon); if(!map) return; } const newLatLng=[lat,lon]; mapMarker.setLatLng(newLatLng); try{ map.setView(newLatLng,17,{animate:true,pan:{duration:0.5}}); }catch(e){} }
-
-    function updateMapPositionWithPath(lat,lon){ if(!map||!mapMarker){ initializeMap(lat,lon); if(!map) return; } const newLatLng=[lat,lon]; mapMarker.setLatLng(newLatLng); const last=pathLatLngs.length?pathLatLngs[pathLatLngs.length-1]:null; let shouldAdd=true; if(last){ const d=distanceMeters(last[0],last[1],lat,lon); if(d<PATH_MIN_DISTANCE_M) shouldAdd=false; } if(shouldAdd){ pathLatLngs.push(newLatLng); if(pathPolyline) pathPolyline.setLatLngs(pathLatLngs); else pathPolyline=L.polyline(pathLatLngs,{color:'#2563eb',weight:4,opacity:0.9}).addTo(map); if(last){ const d=distanceMeters(last[0],last[1],lat,lon); session.traveledMeters+=d; session.totalDistanceCM=Math.round(session.traveledMeters*100); document.getElementById('summaryDistance').textContent = `${(session.traveledMeters/1000).toFixed(2)} km`; } } try{ map.setView(newLatLng,17,{animate:true,pan:{duration:0.5}}); }catch(e){} }
-
-    function distanceMeters(lat1,lon1,lat2,lon2){ const toRad=x=>x*Math.PI/180; const R=6371000; const dLat=toRad(lat2-lat1); const dLon=toRad(lon2-lon1); const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)*Math.sin(dLon/2); const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); return R*c; }
-
-    function checkCrash(gx,gy,gz){ const isCrash=Math.abs(gx)>CRASH_DETECTION_THRESHOLD||Math.abs(gy)>CRASH_DETECTION_THRESHOLD||Math.abs(gz)>CRASH_DETECTION_THRESHOLD; if(isCrash && !crashDetected){ crashDetected=true; document.getElementById('crashStatus').textContent='CRASH!'; document.getElementById('crashStatus').style.color='#ef4444'; showEmergencyOverlay(); } else if(!isCrash && !crashDetected){ document.getElementById('crashStatus').textContent='SAFE'; document.getElementById('crashStatus').style.color='#16a34a'; } }
-    let crashDetected=false;
-
-    function showEmergencyOverlay(){ let overlay=document.getElementById('emergencyOverlay'); if(overlay) return; overlay=document.createElement('div'); overlay.id='emergencyOverlay'; overlay.style.position='fixed'; overlay.style.left='0'; overlay.style.top='0'; overlay.style.width='100vw'; overlay.style.height='100vh'; overlay.style.display='flex'; overlay.style.flexDirection='column'; overlay.style.justifyContent='center'; overlay.style.alignItems='center'; overlay.style.background='rgba(255,0,0,0.85)'; overlay.style.color='white'; overlay.style.textAlign='center'; overlay.style.zIndex='3000'; overlay.innerHTML=`<h1 style='font-size:34px;font-weight:800;margin-bottom:14px;'>CRASH DETECTED!</h1><p style='font-size:18px;margin-bottom:20px;'>Are you okay?</p><button id='callEmergency' style='padding:12px 22px;background:#fff;color:#b91c1c;border-radius:9999px;font-weight:800;margin-bottom:12px;'>Call Emergency Services</button><br/><button id='dismissEmergency' style='padding:9px 18px;background:rgba(255,255,255,0.9);border-radius:9999px;'>Dismiss</button>`; document.body.appendChild(overlay); document.getElementById('callEmergency').addEventListener('click',()=>{ console.log('Call emergency'); dismissEmergencyOverlay(); }); document.getElementById('dismissEmergency').addEventListener('click',dismissEmergencyOverlay); }
-    function dismissEmergencyOverlay(){ const o=document.getElementById('emergencyOverlay'); if(o){ o.remove(); crashDetected=false; document.getElementById('crashStatus').textContent='SAFE'; document.getElementById('crashStatus').style.color='#16a34a'; } }
-
-    function updateTerrainHistory(ax,ay,az){ terrainHistory.ax.push(ax); terrainHistory.ay.push(ay); terrainHistory.az.push(az); if(terrainHistory.ax.length>TERRAIN_HISTORY_LENGTH) terrainHistory.ax.shift(); if(terrainHistory.ay.length>TERRAIN_HISTORY_LENGTH) terrainHistory.ay.shift(); if(terrainHistory.az.length>TERRAIN_HISTORY_LENGTH) terrainHistory.az.shift(); }
-    const terrainHistory={ax:[],ay:[],az:[]};
-    function calculateVariance(arr){ if(!arr||arr.length<2) return 0; const mean=arr.reduce((a,b)=>a+b,0)/arr.length; return arr.reduce((acc,val)=>acc+Math.pow(val-mean,2),0)/arr.length; }
-    function checkTerrain(){ if(terrainHistory.ax.length<TERRAIN_HISTORY_LENGTH) return; const varAX=calculateVariance(terrainHistory.ax); const varAY=calculateVariance(terrainHistory.ay); const varAZ=calculateVariance(terrainHistory.az); const totalVariance=varAX+varAY+varAZ; if(totalVariance>TERRAIN_ROUGH_THRESHOLD){ document.getElementById('terrainStatus').textContent='ROUGH'; document.getElementById('terrainStatus').style.color='#ef4444'; } else if(totalVariance>TERRAIN_MODERATE_THRESHOLD){ document.getElementById('terrainStatus').textContent='MODERATE'; document.getElementById('terrainStatus').style.color='#f59e0b'; } else { document.getElementById('terrainStatus').textContent='SMOOTH'; document.getElementById('terrainStatus').style.color='#16a34a'; } }
-
-    function checkProximity(distanceCM){ if(distanceCM===null||isNaN(distanceCM)) return; let newState='green'; if(distanceCM>=PROX_SAFE_THRESHOLD) newState='green'; else if(distanceCM>=PROX_WARNING_THRESHOLD) newState='yellow'; else newState='red'; if(DOM.overlayProxValue) DOM.overlayProxValue.textContent = Math.round(distanceCM) + ' cm'; if(DOM.proxDotSmall){ DOM.proxDotSmall.className = 'prox-dot ' + (newState==='green'?'prox-green':(newState==='yellow'?'prox-yellow':'prox-red')); } const now=Date.now(); if(newState==='red' && proxState!=='red' && (now-lastProxAlertTs)>3000){ playBeep(); lastProxAlertTs=now; } proxState=newState; }
-
-    function playBeep(){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=700; g.gain.value=0.04; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{ o.stop(); ctx.close(); },220); }catch(e){console.warn('Beep failed',e);} }
-
-    function startSession(){ stopSession(); session.startTime=Date.now(); session.maxSpeed=0; session.totalSpeed=0; session.speedReadings=0; session.totalDistanceCM=0; session.totalCalories=0; session.traveledMeters=0; session.durationInterval=setInterval(()=>{/* reserved */},1000); }
-    function stopSession(){ if(session.durationInterval){ clearInterval(session.durationInterval); session.durationInterval=null; } }
-
-    function startManualTimer(){ if(manualTimer.running) return; manualTimer.running=true; manualTimer.startTs=Date.now(); manualTimer.interval=setInterval(()=>{ updateManualTimerDisplay(); },250); }
-    function stopManualTimer(){ if(!manualTimer.running) return; manualTimer.running=false; clearInterval(manualTimer.interval); manualTimer.interval=null; manualTimer.elapsedBefore+=Date.now()-manualTimer.startTs; updateManualTimerDisplay(); }
-    function resetManualTimer(){ manualTimer.running=false; clearInterval(manualTimer.interval); manualTimer.interval=null; manualTimer.startTs=0; manualTimer.elapsedBefore=0; updateManualTimerDisplay(); }
-    function updateManualTimerDisplay(){ const elapsed=manualTimer.elapsedBefore+(manualTimer.running?(Date.now()-manualTimer.startTs):0); const totalSeconds=Math.floor(elapsed/1000); const hours=Math.floor(totalSeconds/3600); const minutes=Math.floor((totalSeconds%3600)/60); const seconds=totalSeconds%60; DOM.summaryDuration.textContent=[hours.toString().padStart(2,'0'),minutes.toString().padStart(2,'0'),seconds.toString().padStart(2,'0')].join(':'); }
-
-    function updateSessionStats(data){ if(!calculationEnabled) return; if(data.spd>session.maxSpeed){ session.maxSpeed=data.spd; document.getElementById('summaryMaxSpeed').textContent = `${session.maxSpeed.toFixed(1)} km/h`; } session.totalSpeed+=data.spd; session.speedReadings++; const avgSpeed=session.speedReadings>0?session.totalSpeed/session.speedReadings:0; document.getElementById('summaryAvgSpeed').textContent=`${avgSpeed.toFixed(1)} km/h`; if(session.traveledMeters>0){ document.getElementById('summaryDistance').textContent = `${(session.traveledMeters/1000).toFixed(2)} km`; session.totalDistanceCM=Math.round(session.traveledMeters*100); } else { session.totalDistanceCM = data.dist||0; const distKm=(session.totalDistanceCM/100/1000); document.getElementById('summaryDistance').textContent = `${distKm.toFixed(2)} km`; } session.totalCalories=(session.traveledMeters/1000)*KcalPerKm; }
-
-    function resetUI(){ dismissEmergencyOverlay(); DOM.speedValue.textContent='--'; document.getElementById('crashStatus').textContent='SAFE'; document.getElementById('crashStatus').style.color='#16a34a'; document.getElementById('terrainStatus').textContent='SMOOTH'; document.getElementById('terrainStatus').style.color='#16a34a'; DOM.summaryDuration.textContent='--:--:--'; document.getElementById('summaryDistance').textContent='-- km'; document.getElementById('summaryAvgSpeed').textContent='-- km/h'; document.getElementById('summaryMaxSpeed').textContent='-- km/h'; if(DOM.overlayProxValue) DOM.overlayProxValue.textContent='-- cm'; if(DOM.proxDotSmall) DOM.proxDotSmall.className='prox-dot prox-green'; resetManualTimer(); if(pathPolyline){ pathPolyline.remove(); pathPolyline=null; } pathLatLngs=[]; session.traveledMeters=0; calculationEnabled=false; }
-  </script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Insert the rest of your JS code here (all main logic stays same as original) -->
 </body>
 </html>

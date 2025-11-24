@@ -42,9 +42,9 @@
     .app-grid { display:grid; grid-template-columns: 1fr; grid-template-rows: 1fr; height:100vh; }
 
     /* Map prioritized on top for mobile, stats below. Reduced map height so bottom stats are fully visible without scrolling */
-    #map { width:100%; height: 54vh; border-radius:12px; box-shadow: 0 8px 30px rgba(2,6,23,0.08); border:1px solid rgba(15,23,42,0.04); }
+    #map { width:100%; height: 50vh; border-radius:12px; box-shadow: 0 8px 30px rgba(2,6,23,0.08); border:1px solid rgba(15,23,42,0.04); }
 
-    .bottom-stats { height: calc(100vh - 54vh - 20px); overflow:auto; padding:10px; box-sizing:border-box; }
+    .bottom-stats { height: 50vh; overflow:auto; padding:10px; box-sizing:border-box; }
     .card { background: rgba(255,255,255,0.94); backdrop-filter: blur(6px); border-radius:12px; padding:12px; margin-bottom:10px; box-shadow: 0 10px 24px rgba(2,6,23,0.06); border:1px solid rgba(255,255,255,0.6); }
 
     .speed-value { font-weight:900; font-size: clamp(28px, 8vw, 56px); line-height:1; }

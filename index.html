@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>SmartCycle HUD</title>
+  <title>NeuroBike</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -34,99 +34,133 @@
       animation: flashRed 0.5s infinite alternate;
     }
     @keyframes flashRed {
-      from { background-color: rgba(255,0,0,0.85);}
-      to { background-color: rgba(255,0,0,0.65);}
+      from { background-color: rgba(255,0,0,0.85);} to { background-color: rgba(255,0,0,0.65);} }
+
+    /* Responsive layout tweaks */
+    body { margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 50%, #eef2ff 100%); color:#0f172a; height:100vh; overflow:hidden; }
+
+    .app-grid { display:grid; grid-template-columns: 1fr; grid-template-rows: 1fr; height:100vh; }
+
+    /* Map prioritized on top for mobile, stats below */
+    #map { width:100%; height: 62vh; border-radius:12px; box-shadow: 0 8px 30px rgba(2,6,23,0.08); border:1px solid rgba(15,23,42,0.04); }
+
+    .bottom-stats { height: calc(100vh - 62vh - 24px); overflow:auto; padding:12px; box-sizing:border-box; }
+    .card { background: rgba(255,255,255,0.94); backdrop-filter: blur(6px); border-radius:12px; padding:12px; margin-bottom:10px; box-shadow: 0 10px 24px rgba(2,6,23,0.06); border:1px solid rgba(255,255,255,0.6); }
+
+    .speed-value { font-weight:900; font-size: clamp(28px, 8vw, 56px); line-height:1; }
+    .label { font-size:12px; color:#475569; font-weight:700; letter-spacing:0.5px; }
+
+    /* Floating connect controls */
+    .top-controls { position: absolute; top: 10px; right: 10px; z-index:1200; display:flex; gap:8px; align-items:center; }
+    .btn { border-radius:10px; padding:8px 12px; font-weight:700; border:none; cursor:pointer; box-shadow:0 8px 18px rgba(2,6,23,0.06); }
+    .btn-connect { background:#059669; color:white; } /* green */
+    .btn-disconnect { background:#dc2626; color:white; } /* red */
+    .status { padding:8px 12px; border-radius:10px; background: rgba(255,255,255,0.9); color:#0f172a; font-weight:700; box-shadow:0 8px 18px rgba(2,6,23,0.06); }
+
+    /* HUD proximity overlay (only) */
+    .hud-overlays { position:absolute; right:14px; top:84px; z-index:1005; pointer-events:none; }
+    .hud { pointer-events:auto; display:flex; gap:10px; align-items:center; padding:8px 10px; background: rgba(255,255,255,0.95); backdrop-filter: blur(6px); border-radius:10px; box-shadow:0 10px 24px rgba(2,6,23,0.08); border:1px solid rgba(0,0,0,0.04); font-weight:800; }
+    .hud .small { font-size:12px; color:#475569; }
+    .hud .value { font-size:15px; }
+
+    @media(min-width:900px){
+      /* Desktop: map on right, stats left */
+      .desktop-grid { display:grid; grid-template-columns: 40% 60%; gap:18px; height:100vh; padding:18px; box-sizing:border-box; }
+      #map { height: calc(100vh - 36px); border-radius:14px; }
+      .hud-overlays { top: 110px; right: 40px; }
+      .bottom-stats { height:auto; overflow:visible; padding:0; }
     }
   </style>
 </head>
-<body class="bg-gradient-to-br from-blue-100 via-gray-100 to-blue-200 text-gray-900 h-screen w-screen overflow-hidden font-sans flex flex-col transition-colors duration-200 ease-in-out">
+<body>
+  <div class="app-grid">
+    <!-- Desktop uses .desktop-grid, mobile will show map top and stats below -->
+    <div id="map"></div>
 
-<div class="flex-1 grid grid-cols-1 md:grid-cols-5 overflow-hidden relative">
-
-  <!-- HUD overlays container (calories + proximity) -->
-  <div class="order-1 md:col-span-1 flex flex-row md:flex-col items-center md:items-start p-1 md:p-4 gap-2 md:gap-3 absolute md:static top-2 left-2 z-[1001]">
-    <div id="calorieOverlay" class="bg-white/70 shadow-xl border border-white/80 rounded-xl p-2 md:p-3 flex items-center space-x-2 md:space-x-3 transition-opacity duration-300 text-xs md:text-base w-[100px] md:w-auto">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:h-7 md:w-7 text-red-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd" /></svg>
-      <div>
-        <span class="text-xs font-medium text-gray-600 uppercase">Calories</span>
-        <p class="text-base md:text-xl font-bold text-gray-900 leading-none">
-          <span id="overlayCaloriesValue">--</span>
-          <span class="text-xs md:text-sm font-semibold text-red-600 ml-1">kcal</span>
-        </p>
-      </div>
-    </div>
-    <div id="proximityOverlay" class="bg-white/70 shadow-xl border border-white/80 rounded-xl p-2 md:p-3 flex items-center space-x-2 md:space-x-3 transition-opacity duration-300 text-xs md:text-base w-[100px] md:w-auto">
-      <div id="proxDotSmall" class="prox-dot prox-green"></div>
-      <div>
-        <span class="text-xs font-medium text-gray-600 uppercase">Proximity</span>
-        <p class="text-base md:text-xl font-bold text-gray-900 leading-none">
-          <span id="overlayProxValue">--</span>
-          <span class="text-xs md:text-sm">cm</span>
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Main panels -->
-  <div class="order-2 md:col-span-2 flex flex-col space-y-1 md:space-y-4 p-2 md:p-6">
-    <div class="flex justify-center items-center py-1 md:py-2 bg-white/30 backdrop-blur-lg shadow-lg border border-white/40 rounded-2xl">
-      <h1 class="text-xl md:text-3xl font-bold text-gray-800 my-1 md:my-2">NeuroBike</h1>
-    </div>
-    <div class="flex-1 flex flex-col justify-center bg-white/30 backdrop-blur-lg shadow-lg border border-white/40 rounded-2xl p-3 md:p-6">
-      <h2 class="text-lg md:text-2xl font-bold text-blue-600 tracking-widest">SPEED</h2>
-      <div class="flex items-baseline">
-        <span id="speedValue" class="text-3xl md:text-7xl font-black text-black" style="line-height: 1;">--</span>
-        <span class="text-base md:text-2xl font-semibold text-gray-600 ml-2">km/h</span>
-      </div>
-    </div>
-    <div class="flex flex-col md:grid md:grid-cols-2 gap-2 md:gap-6">
-      <div id="crashPanel" class="bg-white/30 backdrop-blur-lg rounded-2xl p-2 md:p-4 text-center shadow-md border-2 border-green-500/30 bg-green-500/10 transition-all duration-300">
-        <h3 class="text-xs md:text-sm font-semibold text-gray-700 uppercase tracking-wider">Crash Status</h3>
-        <div id="crashStatus" class="text-lg md:text-2xl font-bold text-black mt-1">SAFE</div>
-      </div>
-      <div id="terrainPanel" class="bg-white/30 backdrop-blur-lg rounded-2xl p-2 md:p-4 text-center shadow-md border-2 border-green-500/30 bg-green-500/10 transition-all duration-300">
-        <h3 class="text-xs md:text-sm font-semibold text-gray-700 uppercase tracking-wider">Terrain</h3>
-        <div id="terrainStatus" class="text-lg md:text-2xl font-bold text-black mt-1">SMOOTH</div>
-      </div>
-    </div>
-    <div class="bg-white/30 backdrop-blur-lg shadow-lg border border-white/40 rounded-2xl p-2 md:p-6 space-y-1 md:space-y-3">
-      <div class="flex items-center justify-between">
-        <span class="font-medium text-gray-600">Duration</span>
-        <span id="summaryDuration" class="font-semibold text-gray-900 text-base md:text-2xl">--:--:--</span>
-        <div class="flex items-center gap-1 md:gap-2 ml-2 md:ml-3">
-          <button id="timerStart" title="Start" class="icon-btn h-6 w-6 md:h-9 md:w-9"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-600" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3v18l15-9L5 3z"/></svg></button>
-          <button id="timerStop" title="Stop" class="icon-btn h-6 w-6 md:h-9 md:w-9"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-yellow-500" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg></button>
-          <button id="timerReset" title="Reset" class="icon-btn h-6 w-6 md:h-9 md:w-9"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 6V3L8 7l4 4V8c2.8 0 5 2.2 5 5 0 2.8-2.2 5-5 5s-5-2.2-5-5H6c0 3.9 3.1 7 7 7s7-3.1 7-7c0-3.9-3.1-7-7-7z"/></svg></button>
+    <!-- Floating proximity overlay (only) -->
+    <div class="hud-overlays" aria-hidden="false">
+      <div id="proximityOverlay" class="hud" role="status" aria-label="proximity">
+        <div id="proxDotSmall" class="prox-dot prox-green" aria-hidden="true"></div>
+        <div>
+          <div class="small">Proximity</div>
+          <div id="overlayProxValue" class="value">-- cm</div>
         </div>
       </div>
-      <div class="text-right text-xs md:text-sm text-gray-500">Manual Timer</div>
-      <div class="flex justify-between items-baseline text-base md:text-xl pt-2">
-        <span class="font-medium text-gray-600">Distance</span>
-        <span id="summaryDistance" class="font-semibold text-gray-900">-- km</span>
+    </div>
+
+    <!-- Top-right connect controls -->
+    <div class="top-controls">
+      <button id="connectButton" class="btn btn-connect">Connect</button>
+      <button id="disconnectButton" class="btn btn-disconnect" disabled>Disconnect</button>
+      <div id="connectionStatus" class="status">Disconnected</div>
+    </div>
+
+    <!-- Stats area below map (mobile). On desktop you can restyle to left by CSS media query. -->
+    <div class="bottom-stats">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div class="label">SPEED</div>
+            <div style="display:flex; align-items:baseline; gap:8px;">
+              <div id="speedValue" class="speed-value">--</div>
+              <div style="font-weight:700; color:#475569;">km/h</div>
+            </div>
+          </div>
+          <div style="text-align:right; min-width:120px;">
+            <div class="label">Crash</div>
+            <div id="crashStatus" style="font-weight:900; font-size:18px; color:#16a34a;">SAFE</div>
+            <div style="height:8px"></div>
+            <div class="label">Terrain</div>
+            <div id="terrainStatus" style="font-weight:900; font-size:18px; color:#16a34a;">SMOOTH</div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+          <div>
+            <div class="label">Duration</div>
+            <div id="summaryDuration" style="font-weight:900; font-size:16px;">--:--:--</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button id="timerStart" class="btn" title="Start">▶</button>
+            <button id="timerStop" class="btn" title="Stop">■</button>
+            <button id="timerReset" class="btn" title="Reset">↺</button>
+          </div>
+        </div>
       </div>
-      <div class="flex justify-between items-baseline text-base md:text-xl">
-        <span class="font-medium text-gray-600">Avg Speed</span>
-        <span id="summaryAvgSpeed" class="font-semibold text-gray-900">-- km/h</span>
-      </div>
-      <div class="flex justify-between items-baseline text-base md:text-xl">
-        <span class="font-medium text-gray-600">Max Speed</span>
-        <span id="summaryMaxSpeed" class="font-semibold text-gray-900">-- km/h</span>
+
+      <div class="card">
+        <div style="display:flex; gap:12px;">
+          <div style="flex:1; text-align:center;">
+            <div class="label">Distance</div>
+            <div id="summaryDistance" style="font-weight:800;">-- km</div>
+          </div>
+          <div style="flex:1; text-align:center;">
+            <div class="label">Avg Speed</div>
+            <div id="summaryAvgSpeed" style="font-weight:800;">-- km/h</div>
+          </div>
+          <div style="flex:1; text-align:center;">
+            <div class="label">Max Speed</div>
+            <div id="summaryMaxSpeed" style="font-weight:800;">-- km/h</div>
+          </div>
+        </div>
       </div>
     </div>
+
   </div>
 
-  <!-- MAP: order-3 on mobile for largest region -->
-  <div class="order-3 md:order-none col-span-1 md:col-span-3 h-[55vh] md:h-full w-full" id="map"></div>
-</div>
-
-<!-- Bluetooth connection buttons (top-right, small on mobile) -->
-<div class="absolute top-2 right-2 flex flex-row gap-1 md:gap-2 z-[1000]">
-  <button type="button" id="connectButton" class="px-2 py-1 md:px-4 md:py-2 bg-white/70 hover:bg-white/90 border border-gray-300/50 text-blue-600 font-semibold rounded-lg shadow-lg transition duration-200 ease-in-out backdrop-blur-lg disabled:opacity-50 disabled:cursor-not-allowed text-xs md:text-base">Connect</button>
-  <button type="button" id="disconnectButton" class="px-2 py-1 md:px-4 md:py-2 bg-white/70 hover:bg-white/90 border border-gray-300/50 text-red-600 font-semibold rounded-lg shadow-lg transition duration-200 ease-in-out backdrop-blur-lg disabled:opacity-50 disabled:cursor-not-allowed text-xs md:text-base" disabled>Disconnect</button>
-  <div id="connectionStatus" class="px-2 py-1 md:px-4 md:py-2 bg-white/50 text-gray-700 font-medium rounded-lg shadow-lg backdrop-blur-lg text-center border border-white/40 text-xs md:text-base">Disconnected</div>
-</div>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- Insert the rest of your JS code here (all main logic stays same as original) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Keep existing JS logic. Below is the minimal init to show map and wire UI elements.
+    function initMap(){
+      try{
+        const map = L.map('map', { zoomControl:false, attributionControl:false }).setView([51.505, -0.09], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap contributors'}).addTo(map);
+        const pulsingIcon = L.divIcon({className:'gps-marker-icon', html:'<div class="gps-ring"></div>', iconSize:[24,24], iconAnchor:[12,12]});
+        const marker = L.marker([51.505, -0.09], { icon: pulsingIcon }).addTo(map);
+        window._neuro_map = map; window._neuro_marker = marker;
+      }catch(e){ console.error('Map init failed', e); }
+    }
+    window.addEventListener('DOMContentLoaded', ()=>{ initMap(); /* other JS (BLE, parsing, session) should be attached here from your main script */ });
+  </script>
 </body>
 </html>

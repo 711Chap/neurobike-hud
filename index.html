@@ -57,8 +57,8 @@
     .btn-disconnect { background:#dc2626; color:white; } /* red */
     .status { padding:8px 12px; border-radius:10px; background: rgba(255,255,255,0.9); color:#0f172a; font-weight:700; box-shadow:0 8px 18px rgba(2,6,23,0.06); }
 
-    /* HUD proximity overlay (only) */
-    .hud-overlays { position:absolute; right:14px; top:84px; z-index:1005; pointer-events:none; }
+    /* HUD proximity + calories overlay */
+    .hud-overlays { position:absolute; right:14px; top:84px; z-index:1005; pointer-events:none; display:flex; flex-direction:column; gap:10px; }
     .hud { pointer-events:auto; display:flex; gap:10px; align-items:center; padding:8px 10px; background: rgba(255,255,255,0.95); backdrop-filter: blur(6px); border-radius:10px; box-shadow:0 10px 24px rgba(2,6,23,0.08); border:1px solid rgba(0,0,0,0.04); font-weight:800; }
     .hud .small { font-size:12px; color:#475569; }
     .hud .value { font-size:15px; }
@@ -74,16 +74,24 @@
 </head>
 <body>
   <div class="app-grid">
-    <!-- Desktop uses .desktop-grid, mobile will show map top and stats below -->
+
     <div id="map"></div>
 
-    <!-- Floating proximity overlay (only) -->
+    <!-- Floating proximity + calories overlays (calories now added below proximity, identical style) -->
     <div class="hud-overlays" aria-hidden="false">
       <div id="proximityOverlay" class="hud" role="status" aria-label="proximity">
         <div id="proxDotSmall" class="prox-dot prox-green" aria-hidden="true"></div>
         <div>
           <div class="small">Proximity</div>
           <div id="overlayProxValue" class="value">-- cm</div>
+        </div>
+      </div>
+
+      <div id="calorieOverlay" class="hud" role="status" aria-label="calories">
+        <div id="calDotSmall" class="prox-dot prox-green" aria-hidden="true"></div>
+        <div>
+          <div class="small">Calories</div>
+          <div id="overlayCaloriesValue" class="value">-- kcal</div>
         </div>
       </div>
     </div>
@@ -160,7 +168,10 @@
         window._neuro_map = map; window._neuro_marker = marker;
       }catch(e){ console.error('Map init failed', e); }
     }
-    window.addEventListener('DOMContentLoaded', ()=>{ initMap(); /* other JS (BLE, parsing, session) should be attached here from your main script */ });
+    window.addEventListener('DOMContentLoaded', ()=>{ initMap(); /* other JS (BLE, parsing, session) should be attached here from your main script */
+      // ensure calorie overlay mirrors initial state same as proximity
+      document.getElementById('overlayCaloriesValue').textContent = '-- kcal';
+    });
   </script>
 </body>
 </html>

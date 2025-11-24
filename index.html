@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no" />
   <title>NeuroBike</title>
+
+  <!-- uploaded logo reference (not displayed): /mnt/data/Logo.png -->
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.tailwindcss.com"></script>
+
   <style>
-    /* GPS marker pulse and proximity dot */
+    /* map marker pulse */
     .gps-marker-icon .gps-ring {
       border: 3px solid #22d3ee;
       border-radius: 50%;
@@ -21,63 +25,61 @@
       70% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
       100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
     }
-    .prox-dot { height: 14px; width: 14px; border-radius: 9999px; display:inline-block;box-shadow:0 0 10px rgba(0,0,0,0.08);vertical-align:middle;margin-right:8px;transition: transform .18s, box-shadow .18s, background-color .18s;}
-    .prox-green { background-color: #16a34a; box-shadow: 0 0 10px rgba(22,163,74,0.35); }
-    .prox-yellow { background-color: #f59e0b; box-shadow: 0 0 10px rgba(245,158,11,0.35); }
-    .prox-red { background-color: #dc2626; box-shadow: 0 0 12px rgba(220,38,38,0.45); transform: scale(1.2); }
-    .prox-pulse { animation: proxPulse 1s infinite ease-in-out; }
-    @keyframes proxPulse { 0%{transform:scale(1);opacity:1;}50%{transform:scale(1.35);opacity:.85;}100%{transform:scale(1);opacity:1;} }
+
+    /* proximity dot */
+    .prox-dot { height: 14px; width: 14px; border-radius: 9999px; display:inline-block; box-shadow:0 0 10px rgba(0,0,0,0.08); vertical-align:middle; margin-right:8px; transition: transform .18s, background-color .18s;}
+    .prox-green { background:#16a34a; }
+    .prox-yellow { background:#f59e0b; }
+    .prox-red { background:#dc2626; transform:scale(1.12); }
+
+    /* emergency overlay */
     #emergencyOverlay {
-      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-      background-color: rgba(255,0,0,0.85); z-index: 2000;
-      display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; text-align:center;
-      animation: flashRed 0.5s infinite alternate;
+      position: fixed; inset:0; background:rgba(255,0,0,0.85); z-index:3000; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#fff;
+      animation: flash 0.6s infinite alternate;
     }
-    @keyframes flashRed {
-      from { background-color: rgba(255,0,0,0.85);} to { background-color: rgba(255,0,0,0.65);} }
+    @keyframes flash { from { background: rgba(255,0,0,0.85);} to { background:rgba(255,0,0,0.65);} }
 
-    /* Responsive layout tweaks */
-    body { margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; background: linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 50%, #eef2ff 100%); color:#0f172a; height:100vh; overflow:hidden; }
+    /* layout */
+    html,body { height:100%; margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; background: linear-gradient(135deg,#e6f7ff 0,#f0f9ff 50%,#eef2ff 100%); color:#0f172a; }
+    .app { height:100vh; display:flex; flex-direction:column; position:relative; }
 
-    .app-grid { display:grid; grid-template-columns: 1fr; grid-template-rows: 1fr; height:100vh; }
-
-    /* Map prioritized on top for mobile, stats below. Reduced map height so bottom stats are fully visible without scrolling */
-    #map { width:100%; height: 50vh; border-radius:12px; box-shadow: 0 8px 30px rgba(2,6,23,0.08); border:1px solid rgba(15,23,42,0.04); }
-
-    .bottom-stats { height: 50vh; overflow:auto; padding:10px; box-sizing:border-box; }
-    .card { background: rgba(255,255,255,0.94); backdrop-filter: blur(6px); border-radius:12px; padding:12px; margin-bottom:10px; box-shadow: 0 10px 24px rgba(2,6,23,0.06); border:1px solid rgba(255,255,255,0.6); }
-
-    .speed-value { font-weight:900; font-size: clamp(28px, 8vw, 56px); line-height:1; }
-    .label { font-size:12px; color:#475569; font-weight:700; letter-spacing:0.5px; }
-
-    /* Floating connect controls */
-    .top-controls { position: absolute; top: 10px; right: 10px; z-index:1200; display:flex; gap:8px; align-items:center; }
+    /* Top controls */
+    .top-controls { position:absolute; top:10px; right:10px; z-index:1400; display:flex; gap:8px; align-items:center; }
     .btn { border-radius:10px; padding:8px 12px; font-weight:700; border:none; cursor:pointer; box-shadow:0 8px 18px rgba(2,6,23,0.06); }
-    .btn-connect { background:#059669; color:white; } /* green */
-    .btn-disconnect { background:#dc2626; color:white; } /* red */
-    .status { padding:8px 12px; border-radius:10px; background: rgba(255,255,255,0.9); color:#0f172a; font-weight:700; box-shadow:0 8px 18px rgba(2,6,23,0.06); }
+    .btn-connect { background:#059669; color:#fff; }
+    .btn-disconnect { background:#dc2626; color:#fff; }
+    .status { padding:8px 12px; border-radius:10px; background:rgba(255,255,255,0.95); font-weight:700; color:#0f172a; box-shadow:0 8px 18px rgba(2,6,23,0.06); }
 
-    /* HUD proximity + calories overlay (calories has no dot) */
-    .hud-overlays { position:absolute; right:14px; top:78px; z-index:1005; pointer-events:none; display:flex; flex-direction:column; gap:10px; }
-    .hud { pointer-events:auto; display:flex; gap:10px; align-items:center; padding:8px 10px; background: rgba(255,255,255,0.95); backdrop-filter: blur(6px); border-radius:10px; box-shadow:0 10px 24px rgba(2,6,23,0.08); border:1px solid rgba(0,0,0,0.04); font-weight:800; }
+    /* Map / Stats split 50/50 */
+    #map { width:100%; height:50vh; border-radius:12px; margin:12px; box-shadow:0 8px 30px rgba(2,6,23,0.08); border:1px solid rgba(15,23,42,0.04); z-index:1; }
+    .bottom-stats { height:calc(50vh - 24px); padding:12px; overflow:visible; display:flex; flex-direction:column; gap:10px; margin:0 12px 12px 12px; }
+
+    .card { background: rgba(255,255,255,0.95); padding:12px; border-radius:12px; box-shadow:0 10px 24px rgba(2,6,23,0.06); border:1px solid rgba(255,255,255,0.6); }
+    .label { font-size:12px; color:#475569; font-weight:700; letter-spacing:0.5px; }
+    .speed-value { font-weight:900; font-size:clamp(28px, 8vw, 56px); }
+
+    /* HUD overlays (proximity + calories) */
+    .hud-overlays { position:absolute; right:16px; top:64px; z-index:1500; display:flex; flex-direction:column; gap:10px; pointer-events:none; }
+    .hud { pointer-events:auto; display:flex; gap:10px; align-items:center; padding:8px 12px; background:rgba(255,255,255,0.97); border-radius:10px; box-shadow:0 10px 24px rgba(2,6,23,0.08); border:1px solid rgba(0,0,0,0.04); font-weight:800; }
     .hud .small { font-size:12px; color:#475569; }
-    .hud .value { font-size:15px; }
+    .hud .value { font-size:14px; }
 
     @media(min-width:900px){
-      /* Desktop: map on right, stats left */
-      .desktop-grid { display:grid; grid-template-columns: 40% 60%; gap:18px; height:100vh; padding:18px; box-sizing:border-box; }
-      #map { height: calc(100vh - 36px); border-radius:14px; }
-      .hud-overlays { top: 110px; right: 40px; }
-      .bottom-stats { height:200px; overflow:visible; padding:0; }
+      /* desktop layout: left stats, right map */
+      .desktop { display:grid; grid-template-columns: 40% 60%; gap:18px; padding:18px; box-sizing:border-box; height:100vh; }
+      #map { height: calc(100vh - 36px); margin:0; border-radius:14px; }
+      .bottom-stats { margin:0; height:auto; }
+      .hud-overlays { top:110px; right:40px; }
     }
   </style>
 </head>
 <body>
-  <div class="app-grid">
+  <div class="app">
 
-    <div id="map"></div>
+    <!-- MAP -->
+    <div id="map" aria-label="Map"></div>
 
-    <!-- Floating proximity + calories overlays (calories has no dot indicator) -->
+    <!-- HUD overlays (proximity then calories) -->
     <div class="hud-overlays" aria-hidden="false">
       <div id="proximityOverlay" class="hud" role="status" aria-label="proximity">
         <div id="proxDotSmall" class="prox-dot prox-green" aria-hidden="true"></div>
@@ -88,7 +90,8 @@
       </div>
 
       <div id="calorieOverlay" class="hud" role="status" aria-label="calories">
-        <div style="width:14px; height:14px;" aria-hidden="true"></div>
+        <!-- removed dot per request: empty spacer keeps alignment -->
+        <div style="width:14px;height:14px;" aria-hidden="true"></div>
         <div>
           <div class="small">Calories</div>
           <div id="overlayCaloriesValue" class="value">-- kcal</div>
@@ -96,15 +99,15 @@
       </div>
     </div>
 
-    <!-- Top-right connect controls -->
+    <!-- top controls -->
     <div class="top-controls">
       <button id="connectButton" class="btn btn-connect">Connect</button>
       <button id="disconnectButton" class="btn btn-disconnect" disabled>Disconnect</button>
       <div id="connectionStatus" class="status">Disconnected</div>
     </div>
 
-    <!-- Stats area below map (mobile). On desktop you can restyle to left by CSS media query. -->
-    <div class="bottom-stats">
+    <!-- bottom stats (50% of viewport) -->
+    <div class="bottom-stats" role="region" aria-label="session stats">
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
@@ -114,6 +117,7 @@
               <div style="font-weight:700; color:#475569;">km/h</div>
             </div>
           </div>
+
           <div style="text-align:right; min-width:120px;">
             <div class="label">Crash</div>
             <div id="crashStatus" style="font-weight:900; font-size:18px; color:#16a34a;">SAFE</div>
@@ -128,6 +132,7 @@
             <div class="label">Duration</div>
             <div id="summaryDuration" style="font-weight:900; font-size:16px;">--:--:--</div>
           </div>
+
           <div style="display:flex; gap:8px;">
             <button id="timerStart" class="btn" title="Start">▶</button>
             <button id="timerStop" class="btn" title="Stop">■</button>
@@ -156,22 +161,426 @@
 
   </div>
 
+  <!-- Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <script>
-    // Keep existing JS logic. Below is the minimal init to show map and wire UI elements.
-    function initMap(){
-      try{
-        const map = L.map('map', { zoomControl:false, attributionControl:false }).setView([51.505, -0.09], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap contributors'}).addTo(map);
-        const pulsingIcon = L.divIcon({className:'gps-marker-icon', html:'<div class="gps-ring"></div>', iconSize:[24,24], iconAnchor:[12,12]});
-        const marker = L.marker([51.505, -0.09], { icon: pulsingIcon }).addTo(map);
-        window._neuro_map = map; window._neuro_marker = marker;
-      }catch(e){ console.error('Map init failed', e); }
-    }
-    window.addEventListener('DOMContentLoaded', ()=>{ initMap(); /* other JS (BLE, parsing, session) should be attached here from your main script */
-      // ensure calorie overlay mirrors initial state same as proximity
-      document.getElementById('overlayCaloriesValue').textContent = '-- kcal';
+    /*
+      FULL client-side JS:
+      - Map init + pulsing marker
+      - BLE connect/disconnect + characteristic notifications
+      - Data parsing, session stats, crash detection, terrain analysis, proximity and calories overlays
+      - Minimal, robust error handling
+    */
+
+    // UUIDs must match your ESP32 BLE service/char
+    const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
+    const CHARACTERISTIC_UUID = "87654321-4321-4321-4321-cba987654321";
+
+    const FIELDS = { "Lat":1, "Lon":1, "Spd":1, "Alt":1, "Dist":1, "Sats":1, "AX":1, "AY":1, "AZ":1, "GX":1, "GY":1, "GZ":1, "Prox":1 };
+    const CRASH_DETECTION_THRESHOLD = 250;
+    const TERRAIN_HISTORY_LENGTH = 15;
+    const TERRAIN_ROUGH_THRESHOLD = 20000000;
+    const TERRAIN_MODERATE_THRESHOLD = 5000000;
+    const PROX_SAFE_THRESHOLD = 90;
+    const PROX_WARNING_THRESHOLD = 50;
+    const KcalPerKm = 40;
+    const PATH_MIN_DISTANCE_M = 2;
+    const CALC_DELAY_MS = 7000;
+
+    // state
+    let map = null, mapMarker = null, pathLatLngs = [], pathPolyline = null;
+    let bleDevice = null, bleServer = null, bleCharacteristic = null;
+    let session = { startTime:null, durationInterval:null, maxSpeed:0, totalSpeed:0, speedReadings:0, totalDistanceCM:0, totalCalories:0, traveledMeters:0 };
+    const terrainHistory = { ax:[], ay:[], az:[] };
+    const DOM = {};
+    let manualTimer = { running:false, startTs:0, elapsedBefore:0, interval:null };
+    let proxState = 'unknown', lastProxAlertTs = 0;
+    let calcStartAt = 0, calculationEnabled = false;
+    let crashDetected = false;
+
+    // helper: safe query
+    function $id(id){ return document.getElementById(id); }
+
+    // init
+    window.addEventListener('DOMContentLoaded', ()=>{
+      DOM.connectButton = $id('connectButton');
+      DOM.disconnectButton = $id('disconnectButton');
+      DOM.connectionStatus = $id('connectionStatus');
+
+      DOM.speedValue = $id('speedValue');
+      DOM.crashStatus = $id('crashStatus');
+      DOM.terrainStatus = $id('terrainStatus');
+      DOM.summaryDuration = $id('summaryDuration');
+      DOM.summaryDistance = $id('summaryDistance');
+      DOM.summaryAvgSpeed = $id('summaryAvgSpeed');
+      DOM.summaryMaxSpeed = $id('summaryMaxSpeed');
+      DOM.overlayProxValue = $id('overlayProxValue');
+      DOM.proxDotSmall = $id('proxDotSmall');
+      DOM.overlayCaloriesValue = $id('overlayCaloriesValue');
+
+      DOM.timerStart = $id('timerStart');
+      DOM.timerStop = $id('timerStop');
+      DOM.timerReset = $id('timerReset');
+
+      DOM.connectButton.addEventListener('click', onConnectButtonClick);
+      DOM.disconnectButton.addEventListener('click', onDisconnectButtonClick);
+      DOM.timerStart.addEventListener('click', startManualTimer);
+      DOM.timerStop.addEventListener('click', stopManualTimer);
+      DOM.timerReset.addEventListener('click', resetManualTimer);
+
+      initMap(51.505, -0.09);
     });
+
+    function initMap(lat, lon){
+      try {
+        map = L.map('map', { zoomControl:false, attributionControl:false }).setView([lat, lon], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap contributors' }).addTo(map);
+        const pulsingIcon = L.divIcon({ className:'gps-marker-icon', html:'<div class="gps-ring"></div>', iconSize:[24,24], iconAnchor:[12,12] });
+        mapMarker = L.marker([lat, lon], { icon: pulsingIcon }).addTo(map);
+        pathLatLngs = [[lat,lon]];
+        pathPolyline = L.polyline(pathLatLngs, { color:'#2563eb', weight:4, opacity:0.9 }).addTo(map);
+      } catch(e) {
+        console.error('Map init failed', e);
+      }
+    }
+
+    // BLE functions
+    async function onConnectButtonClick(){
+      if(!navigator.bluetooth){ alert('Web Bluetooth not available in this browser. Use Chrome on Android.'); return; }
+      try{
+        updateConnectionStatus('Requesting device...', 'connecting');
+        DOM.connectButton.disabled = true;
+
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters:[{ services: [SERVICE_UUID] }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        if(!bleDevice){ updateConnectionStatus('No device selected', 'disconnected'); DOM.connectButton.disabled = false; return; }
+
+        updateConnectionStatus('Connecting...', 'connecting');
+        bleDevice.addEventListener('gattserverdisconnected', onGATTServerDisconnected);
+        bleServer = await bleDevice.gatt.connect();
+
+        const service = await bleServer.getPrimaryService(SERVICE_UUID);
+        bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+        await bleCharacteristic.startNotifications();
+        bleCharacteristic.addEventListener('characteristicvaluechanged', handleCharacteristicNotification);
+
+        updateConnectionStatus(`Connected to ${bleDevice.name || 'Device'}`, 'connected');
+        DOM.connectButton.disabled = true;
+        DOM.disconnectButton.disabled = false;
+
+        startSession();
+        calcStartAt = Date.now() + CALC_DELAY_MS;
+        calculationEnabled = false;
+      } catch(err) {
+        console.error('Connect failed', err);
+        updateConnectionStatus('Connection failed', 'error');
+        DOM.connectButton.disabled = false;
+        try { if(bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); } catch(e){}
+      }
+    }
+
+    function onDisconnectButtonClick(){
+      try {
+        if(bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+        else onGATTServerDisconnected();
+      } catch(e) {
+        onGATTServerDisconnected();
+      }
+    }
+
+    function onGATTServerDisconnected(){
+      updateConnectionStatus('Disconnected', 'disconnected');
+      DOM.connectButton.disabled = false;
+      DOM.disconnectButton.disabled = true;
+      if(bleCharacteristic && typeof bleCharacteristic.removeEventListener === 'function'){
+        try { bleCharacteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicNotification); } catch(e){}
+      }
+      bleDevice = null; bleServer = null; bleCharacteristic = null;
+      stopSession();
+      resetUI();
+    }
+
+    function updateConnectionStatus(text, status){
+      DOM.connectionStatus.textContent = text;
+      DOM.connectionStatus.className = 'status';
+      if(status === 'connecting') DOM.connectionStatus.textContent = 'Connecting...';
+      if(status === 'connected') DOM.connectionStatus.textContent = text;
+      if(status === 'disconnected') DOM.connectionStatus.textContent = 'Disconnected';
+      if(status === 'error') DOM.connectionStatus.textContent = 'Error';
+    }
+
+    // Notification handler
+    function handleCharacteristicNotification(evt){
+      if(!evt?.target?.value) return;
+      const raw = new TextDecoder().decode(evt.target.value);
+      if(!raw) return;
+      const data = parseDataString(raw);
+      if(!data || Object.keys(data).length === 0) return;
+
+      const analysisData = {
+        lat: ('Lat' in data) ? (parseFloat(data['Lat']) || null) : null,
+        lon: ('Lon' in data) ? (parseFloat(data['Lon']) || null) : null,
+        spd: parseFloat(data['Spd']) || 0,
+        alt: parseFloat(data['Alt']) || 0,
+        dist: parseFloat(data['Dist']) || 0,
+        sats: parseInt(data['Sats']) || 0,
+        ax: parseFloat(data['AX']) || 0, ay: parseFloat(data['AY']) || 0, az: parseFloat(data['AZ']) || 0,
+        gx: parseFloat(data['GX']) || 0, gy: parseFloat(data['GY']) || 0, gz: parseFloat(data['GZ']) || 0,
+        prox: ('Prox' in data) ? (isNaN(parseFloat(data['Prox'])) ? null : parseFloat(data['Prox'])) : null
+      };
+
+      // update visible speed
+      DOM.speedValue.textContent = (analysisData.spd || 0).toFixed(1);
+
+      // update overlays
+      if (analysisData.prox !== null) checkProximity(analysisData.prox);
+      if (analysisData.lat !== null && analysisData.lon !== null) {
+        if(!calculationEnabled) {
+          if(Date.now() >= calcStartAt) {
+            calculationEnabled = true;
+            pathLatLngs = [[analysisData.lat, analysisData.lon]];
+            session.traveledMeters = 0;
+            if(map){
+              if(pathPolyline) pathPolyline.remove();
+              pathPolyline = L.polyline(pathLatLngs, { color:'#2563eb', weight:4, opacity:0.9 }).addTo(map);
+            }
+          } else {
+            // warm-up: show marker but don't compute distance
+            updateMarkerOnly(analysisData.lat, analysisData.lon);
+          }
+        }
+        if(calculationEnabled) updateMapPositionWithPath(analysisData.lat, analysisData.lon);
+      }
+
+      // other analyses
+      checkCrash(analysisData.gx, analysisData.gy, analysisData.gz);
+      updateTerrainHistory(analysisData.ax, analysisData.ay, analysisData.az);
+      checkTerrain();
+
+      if(calculationEnabled) updateSessionStats(analysisData);
+    }
+
+    // parse "Key:Value, Key2:Value2" style string into object
+    function parseDataString(s){
+      if(!s) return null;
+      const obj = {};
+      s.split(',').forEach(pair => {
+        const parts = pair.split(':');
+        if(parts.length < 2) return;
+        const key = parts[0].trim();
+        const val = parts.slice(1).join(':').trim();
+        if(key && FIELDS[key]) obj[key] = val;
+      });
+      return obj;
+    }
+
+    // Map helpers
+    function updateMarkerOnly(lat, lon){
+      if(!map) initMap(lat, lon);
+      if(!mapMarker){
+        const pulsingIcon = L.divIcon({ className:'gps-marker-icon', html:'<div class="gps-ring"></div>', iconSize:[24,24], iconAnchor:[12,12] });
+        mapMarker = L.marker([lat,lon], { icon: pulsingIcon }).addTo(map);
+      } else {
+        mapMarker.setLatLng([lat,lon]);
+      }
+      try { map.setView([lat,lon], 17, { animate:true, pan:{ duration:0.5 } }); } catch(e) {}
+    }
+
+    function updateMapPositionWithPath(lat, lon){
+      if(!map) initMap(lat, lon);
+      if(!mapMarker) updateMarkerOnly(lat,lon);
+      const newLatLng = [lat, lon];
+      mapMarker.setLatLng(newLatLng);
+      const last = pathLatLngs.length ? pathLatLngs[pathLatLngs.length-1] : null;
+      let shouldAdd = true;
+      if(last){
+        const d = distanceMeters(last[0], last[1], lat, lon);
+        if(d < PATH_MIN_DISTANCE_M) shouldAdd = false;
+      }
+      if(shouldAdd){
+        pathLatLngs.push(newLatLng);
+        if(pathPolyline) pathPolyline.setLatLngs(pathLatLngs);
+        else pathPolyline = L.polyline(pathLatLngs, { color:'#2563eb', weight:4, opacity:0.9 }).addTo(map);
+        if(last){
+          const d = distanceMeters(last[0], last[1], lat, lon);
+          session.traveledMeters += d;
+          session.totalDistanceCM = Math.round(session.traveledMeters * 100);
+          DOM.summaryDistance.textContent = `${(session.traveledMeters/1000).toFixed(2)} km`;
+        }
+      }
+      try { map.setView(newLatLng, 17, { animate:true, pan:{ duration:0.5 } }); } catch(e) {}
+    }
+
+    function distanceMeters(lat1, lon1, lat2, lon2){
+      const toRad = x => x * Math.PI / 180;
+      const R = 6371000;
+      const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)*Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // Crash detection
+    function checkCrash(gx, gy, gz){
+      const isCrash = Math.abs(gx) > CRASH_DETECTION_THRESHOLD || Math.abs(gy) > CRASH_DETECTION_THRESHOLD || Math.abs(gz) > CRASH_DETECTION_THRESHOLD;
+      if(isCrash && !crashDetected){
+        crashDetected = true;
+        DOM.crashStatus.textContent = 'CRASH!';
+        DOM.crashStatus.style.color = '#ef4444';
+        showEmergencyOverlay();
+      } else if(!isCrash && !crashDetected){
+        DOM.crashStatus.textContent = 'SAFE';
+        DOM.crashStatus.style.color = '#16a34a';
+      }
+    }
+
+    function showEmergencyOverlay(){
+      if(document.getElementById('emergencyOverlay')) return;
+      const overlay = document.createElement('div');
+      overlay.id = 'emergencyOverlay';
+      overlay.innerHTML = `
+        <h1 style="font-size:32px;font-weight:900;margin-bottom:12px;">CRASH DETECTED!</h1>
+        <p style="font-size:18px;margin-bottom:18px;">Are you okay?</p>
+        <button id="callEmergency" style="padding:12px 20px;border-radius:999px;background:#fff;color:#b91c1c;font-weight:800;margin-bottom:12px;">Call Emergency Services</button><br/>
+        <button id="dismissEmergency" style="padding:10px 16px;border-radius:999px;background:rgba(255,255,255,0.9);">Dismiss</button>
+      `;
+      document.body.appendChild(overlay);
+      document.getElementById('callEmergency').addEventListener('click', ()=>{ console.log('call emergency placeholder'); dismissEmergencyOverlay(); });
+      document.getElementById('dismissEmergency').addEventListener('click', dismissEmergencyOverlay);
+    }
+
+    function dismissEmergencyOverlay(){
+      const e = document.getElementById('emergencyOverlay');
+      if(e) e.remove();
+      crashDetected = false;
+      DOM.crashStatus.textContent = 'SAFE';
+      DOM.crashStatus.style.color = '#16a34a';
+    }
+
+    // Terrain history and variance
+    function updateTerrainHistory(ax, ay, az){
+      terrainHistory.ax.push(ax); terrainHistory.ay.push(ay); terrainHistory.az.push(az);
+      if(terrainHistory.ax.length > TERRAIN_HISTORY_LENGTH) terrainHistory.ax.shift();
+      if(terrainHistory.ay.length > TERRAIN_HISTORY_LENGTH) terrainHistory.ay.shift();
+      if(terrainHistory.az.length > TERRAIN_HISTORY_LENGTH) terrainHistory.az.shift();
+    }
+    function calculateVariance(arr){
+      if(!arr || arr.length < 2) return 0;
+      const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+      return arr.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / arr.length;
+    }
+    function checkTerrain(){
+      if(terrainHistory.ax.length < TERRAIN_HISTORY_LENGTH) return;
+      const varAX = calculateVariance(terrainHistory.ax);
+      const varAY = calculateVariance(terrainHistory.ay);
+      const varAZ = calculateVariance(terrainHistory.az);
+      const totalVariance = varAX + varAY + varAZ;
+      if(totalVariance > TERRAIN_ROUGH_THRESHOLD){
+        DOM.terrainStatus.textContent = 'ROUGH'; DOM.terrainStatus.style.color = '#ef4444';
+      } else if(totalVariance > TERRAIN_MODERATE_THRESHOLD){
+        DOM.terrainStatus.textContent = 'MODERATE'; DOM.terrainStatus.style.color = '#f59e0b';
+      } else {
+        DOM.terrainStatus.textContent = 'SMOOTH'; DOM.terrainStatus.style.color = '#16a34a';
+      }
+    }
+
+    // PROXIMITY overlay logic
+    function checkProximity(distanceCM){
+      if(distanceCM === null || isNaN(distanceCM)) return;
+      let state = 'green';
+      if(distanceCM >= PROX_SAFE_THRESHOLD) state = 'green';
+      else if(distanceCM >= PROX_WARNING_THRESHOLD) state = 'yellow';
+      else state = 'red';
+
+      if(DOM.overlayProxValue) DOM.overlayProxValue.textContent = Math.round(distanceCM) + ' cm';
+      if(DOM.proxDotSmall){
+        DOM.proxDotSmall.className = 'prox-dot ' + (state === 'green' ? 'prox-green' : (state === 'yellow' ? 'prox-yellow' : 'prox-red'));
+      }
+
+      const now = Date.now();
+      if(state === 'red' && proxState !== 'red' && (now - lastProxAlertTs) > 3000){
+        playBeep(); lastProxAlertTs = now;
+      }
+      proxState = state;
+    }
+    function playBeep(){
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = 700; g.gain.value = 0.04;
+        o.connect(g); g.connect(ctx.destination); o.start();
+        setTimeout(()=>{ o.stop(); ctx.close(); }, 220);
+      } catch(e){ console.warn('beep failed', e); }
+    }
+
+    // SESSION and timer
+    function startSession(){
+      stopSession();
+      session.startTime = Date.now();
+      session.maxSpeed = 0; session.totalSpeed = 0; session.speedReadings = 0;
+      session.totalDistanceCM = 0; session.totalCalories = 0; session.traveledMeters = 0;
+      session.durationInterval = setInterval(()=>{/* reserved */}, 1000);
+    }
+    function stopSession(){ if(session.durationInterval){ clearInterval(session.durationInterval); session.durationInterval = null; } }
+
+    function startManualTimer(){ if(manualTimer.running) return; manualTimer.running = true; manualTimer.startTs = Date.now(); manualTimer.interval = setInterval(updateManualTimerDisplay, 250); }
+    function stopManualTimer(){ if(!manualTimer.running) return; manualTimer.running = false; clearInterval(manualTimer.interval); manualTimer.interval = null; manualTimer.elapsedBefore += Date.now() - manualTimer.startTs; updateManualTimerDisplay(); }
+    function resetManualTimer(){ manualTimer.running = false; clearInterval(manualTimer.interval); manualTimer.interval = null; manualTimer.startTs = 0; manualTimer.elapsedBefore = 0; updateManualTimerDisplay(); }
+    function updateManualTimerDisplay(){ const elapsed = manualTimer.elapsedBefore + (manualTimer.running ? (Date.now() - manualTimer.startTs) : 0); const totalSeconds = Math.floor(elapsed/1000); const hours = Math.floor(totalSeconds/3600); const minutes = Math.floor((totalSeconds % 3600) / 60); const seconds = totalSeconds % 60; DOM.summaryDuration.textContent = [hours.toString().padStart(2,'0'), minutes.toString().padStart(2,'0'), seconds.toString().padStart(2,'0')].join(':'); }
+
+    function updateSessionStats(data){
+      if(!calculationEnabled) return;
+      if(data.spd > session.maxSpeed){ session.maxSpeed = data.spd; DOM.summaryMaxSpeed.textContent = `${session.maxSpeed.toFixed(1)} km/h`; }
+      session.totalSpeed += data.spd; session.speedReadings++;
+      const avgSpeed = session.speedReadings > 0 ? session.totalSpeed / session.speedReadings : 0;
+      DOM.summaryAvgSpeed.textContent = `${avgSpeed.toFixed(1)} km/h`;
+      if(session.traveledMeters > 0){
+        DOM.summaryDistance.textContent = `${(session.traveledMeters/1000).toFixed(2)} km`;
+        session.totalDistanceCM = Math.round(session.traveledMeters * 100);
+      } else {
+        session.totalDistanceCM = data.dist || 0;
+        const distKm = (session.totalDistanceCM / 100 / 1000);
+        DOM.summaryDistance.textContent = `${distKm.toFixed(2)} km`;
+      }
+      session.totalCalories = (session.traveledMeters / 1000) * KcalPerKm;
+      const calValue = Math.round(session.totalCalories);
+      if(DOM.overlayCaloriesValue) DOM.overlayCaloriesValue.textContent = isFinite(calValue) ? (calValue + ' kcal') : '-- kcal';
+    }
+
+    function resetUI(){
+      dismissEmergencyOverlay();
+      DOM.speedValue.textContent = '--';
+      DOM.crashStatus.textContent = 'SAFE'; DOM.crashStatus.style.color = '#16a34a';
+      DOM.terrainStatus.textContent = 'SMOOTH'; DOM.terrainStatus.style.color = '#16a34a';
+      DOM.summaryDuration.textContent = '--:--:--';
+      DOM.summaryDistance.textContent = '-- km';
+      DOM.summaryAvgSpeed.textContent = '-- km/h';
+      DOM.summaryMaxSpeed.textContent = '-- km/h';
+      if(DOM.overlayProxValue) DOM.overlayProxValue.textContent = '-- cm';
+      if(DOM.overlayCaloriesValue) DOM.overlayCaloriesValue.textContent = '-- kcal';
+      if(DOM.proxDotSmall) DOM.proxDotSmall.className = 'prox-dot prox-green';
+      resetManualTimer();
+      if(pathPolyline) { pathPolyline.remove(); pathPolyline = null; }
+      pathLatLngs = [];
+      session.traveledMeters = 0;
+      calculationEnabled = false;
+      crashDetected = false;
+    }
+
+    // init map on load (center default)
+    (function autoInitMap(){
+      // called via DOMContentLoaded already
+    })();
+
+    // expose some functions for debugging
+    window.__neuro = {
+      parseDataString, updateMapPositionWithPath, updateMarkerOnly, checkProximity, resetUI
+    };
   </script>
 </body>
 </html>

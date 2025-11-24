@@ -3,295 +3,279 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
-  <title>SmartCycle HUD — NeuroBike</title>
+  <title>NeuroBike</title>
 
-  <!-- PWA / Icons / Manifest should already be present in project -->
+  <!-- NOTE: uploaded logo path (kept as reference, not used visually): /mnt/data/Logo.png -->
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
-    /* --- Visual theme --- */
     :root{
       --accent-1: #3B82F6;
       --accent-2: #1E3A8A;
-      --panel-bg: rgba(255,255,255,0.75);
-      --panel-blur: 8px;
+      --panel-bg: rgba(255,255,255,0.80);
+      --panel-blur: 6px;
+      --ui-ink: #0f172a;
     }
 
+    html,body { height:100%; margin:0; padding:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+
     body {
-      margin:0;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
       background: linear-gradient(135deg, #e6f0ff 0%, #eef2f7 50%, #e6f7ff 100%);
-      color: #0f172a;
-      -webkit-font-smoothing:antialiased;
-      -moz-osx-font-smoothing:grayscale;
-      height: 100vh;
+      color: var(--ui-ink);
       overflow: hidden;
     }
 
-    /* --- Layout --- */
-    .app-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      grid-template-rows: auto 1fr; /* header + content */
-      height: 100vh;
+    /* App layout */
+    .app {
+      display:flex;
+      flex-direction:column;
+      height:100vh;
     }
 
-    header.app-header {
+    header {
+      height:64px;
       display:flex;
       align-items:center;
+      padding:0 16px;
       gap:12px;
-      padding:10px 14px;
       background: linear-gradient(90deg,var(--accent-1),var(--accent-2));
-      color: white;
+      color:white;
       box-shadow: 0 6px 18px rgba(14,30,60,0.12);
-      z-index: 30;
+      z-index:40;
+      flex-shrink:0;
     }
-    header.app-header img.logo {
-      height:36px;
-      width:36px;
-      border-radius:8px;
-      object-fit:cover;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.12);
-      background:white;
-      padding:4px;
+    header h1 { margin:0; font-size:18px; font-weight:700; letter-spacing:0.2px; }
+
+    header .controls { margin-left:auto; display:flex; gap:8px; align-items:center; }
+
+    /* Visible action buttons */
+    .btn {
+      border: none;
+      padding:10px 12px;
+      border-radius:10px;
+      font-weight:700;
+      cursor:pointer;
+      box-shadow: 0 8px 18px rgba(2,6,23,0.08);
+      min-width:44px;
+      text-align:center;
     }
-    header.app-header h1 { font-size:18px; font-weight:700; letter-spacing:0.4px; margin:0; }
+    .btn-connect { background:#10b981; color:white; } /* bright green */
+    .btn-disconnect { background:#ef4444; color:white; } /* bright red */
+    .btn-muted { background:rgba(255,255,255,0.85); color:#0f172a; border:1px solid rgba(0,0,0,0.04); }
 
     /* Content area */
     .content {
-      display: grid;
+      height: calc(100vh - 64px);
+      display:grid;
       grid-template-columns: 1fr;
       grid-template-rows: auto 1fr;
       gap:12px;
       padding:12px;
-      height: calc(100vh - 64px);
-      box-sizing: border-box;
+      box-sizing:border-box;
     }
 
-    /* Mobile-first: map on top, panels below */
+    /* Map takes priority on mobile */
     #map {
       width:100%;
-      height: 60vh;
-      border-radius: 14px;
-      overflow: hidden;
-      box-shadow: 0 6px 24px rgba(2,6,23,0.08);
+      height: 66vh;
+      border-radius:12px;
+      overflow:hidden;
+      box-shadow: 0 8px 30px rgba(2,6,23,0.08);
       border: 1px solid rgba(15,23,42,0.04);
     }
 
+    /* Panels stack below map on mobile */
     .panels {
-      display: grid;
+      display:grid;
       grid-template-columns: 1fr;
       gap:10px;
       align-content:start;
       overflow:auto;
-      padding-bottom: 6px;
+      padding-bottom:6px;
     }
 
-    /* HUD small floating overlays (calories + prox) */
+    .card {
+      background: var(--panel-bg);
+      backdrop-filter: blur(var(--panel-blur));
+      border-radius:12px;
+      padding:12px;
+      box-shadow: 0 10px 24px rgba(2,6,23,0.06);
+      border: 1px solid rgba(255,255,255,0.6);
+    }
+
+    .speed {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+    }
+    .speed .left { display:flex; flex-direction:column; gap:6px; }
+    .label { font-size:12px; color:#475569; font-weight:700; letter-spacing:0.5px; }
+    .speed-value { font-weight:900; font-size: clamp(36px, 8vw, 64px); line-height:1; color:var(--ui-ink); }
+    .unit { font-weight:700; color:#475569; font-size:14px; }
+
+    .stats-grid { display:flex; gap:10px; justify-content:space-between; margin-top:6px; }
+    .stat { flex:1; text-align:center; }
+    .stat b { display:block; font-weight:800; font-size:16px; color:var(--ui-ink); }
+
+    /* Floating HUD overlays on map (now the only place for calories/prox) */
     .hud-overlays {
       position: absolute;
-      right: 12px;
+      right: 14px;
       top: calc(64px + 12px);
       display:flex;
       flex-direction:column;
       gap:10px;
-      z-index: 1001;
-      pointer-events: none; /* allow clicks to pass unless child allows */
+      z-index:1001;
+      pointer-events:none;
     }
-    .hud-card {
-      pointer-events: auto;
+    .hud {
+      pointer-events:auto;
       display:flex;
-      align-items:center;
       gap:10px;
+      align-items:center;
       padding:8px 10px;
-      background: var(--panel-bg);
-      backdrop-filter: blur(var(--panel-blur));
-      border-radius:12px;
-      box-shadow: 0 6px 20px rgba(2,6,23,0.08);
-      border:1px solid rgba(255,255,255,0.6);
-      min-width: 120px;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(6px);
+      border-radius:10px;
+      box-shadow: 0 10px 24px rgba(2,6,23,0.08);
+      min-width:120px;
+      border: 1px solid rgba(0,0,0,0.04);
+      font-weight:700;
     }
-    .hud-card img{ height:28px; width:28px; border-radius:6px }
+    .hud .small { font-size:12px; color:#475569; font-weight:700; }
+    .hud .value { font-size:15px; color:var(--ui-ink); font-weight:900; }
 
-    /* Panel card */
-    .card {
-      background: var(--panel-bg);
-      backdrop-filter: blur(var(--panel-blur));
-      border-radius: 14px;
-      padding:12px;
-      box-shadow: 0 10px 30px rgba(2,6,23,0.06);
-      border: 1px solid rgba(255,255,255,0.65);
-    }
+    /* Proximity dot */
+    .prox-dot { height:12px; width:12px; border-radius:9999px; display:inline-block; box-shadow:0 4px 10px rgba(0,0,0,0.08); }
+    .prox-green { background:#16a34a; }
+    .prox-yellow { background:#f59e0b; }
+    .prox-red { background:#dc2626; transform:scale(1.15); }
 
-    .speed-big { font-size: clamp(34px, 9vw, 72px); font-weight:900; line-height:1; }
-    .label-sm { font-size: 12px; color: #475569; font-weight:600; letter-spacing:0.6px; }
-    .stat-large { font-weight:800; font-size:18px; color:#0f172a; }
-
-    /* Controls row */
-    .controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .btn {
-      display:inline-flex; align-items:center; justify-content:center;
-      background:white; border-radius:8px; padding:8px;
-      box-shadow: 0 6px 12px rgba(2,6,23,0.06); border:1px solid rgba(2,6,23,0.04);
-      min-width:40px; min-height:40px;
-    }
-
-    /* Make map larger on larger screens and panels to the left */
+    /* Desktop layout: panels left, map right */
     @media(min-width:900px) {
-      .content {
-        grid-template-columns: 1fr;
-        grid-template-rows: 1fr;
-        padding:18px;
-      }
-      .main-layout {
+      .content { padding:18px; }
+      .main-grid {
+        height:100%;
         display:grid;
         grid-template-columns: 38% 62%;
         gap:18px;
-        height:100%;
       }
-      #map { height:100%; border-radius:16px; }
-      .panels { max-height: 100%; overflow:auto; }
-      .hud-overlays { top: 86px; right: 32px; }
+      #map { height:100%; border-radius:14px; }
+      .hud-overlays { top: calc(64px + 18px); right: 32px; }
     }
 
-    /* Desktop very wide */
-    @media(min-width:1200px) {
-      .main-layout { grid-template-columns: 40% 60%; }
-      header.app-header h1 { font-size:20px; }
+    @media(max-width:420px){
+      #map { height:64vh; }
     }
 
-    /* Small tweaks for very small screens */
-    @media(max-width:420px) {
-      header.app-header h1 { font-size:16px; }
-      .hud-card { min-width: 100px; padding:7px; }
-      #map { height: 58vh; }
-    }
-
-    /* emergency overlay style kept same but higher z */
-    #emergencyOverlay { z-index: 3000; }
+    /* emergency overlay z */
+    #emergencyOverlay { z-index:3000; }
   </style>
 </head>
-
 <body>
-  <div class="app-grid">
-    <header class="app-header">
-      <!-- logo uses uploaded file path, change if needed for production -->
-      <img class="logo" src="/mnt/data/Logo.png" alt="NeuroBike logo">
-      <h1>NeuroBike — SmartCycle HUD</h1>
-
-      <!-- right side quick actions in header -->
-      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-        <button id="connectButton" class="btn" aria-label="connect" title="Connect">Connect</button>
-        <button id="disconnectButton" class="btn" disabled aria-label="disconnect" title="Disconnect">Disconnect</button>
-        <div id="connectionStatus" class="card" style="padding:8px 12px; border-radius:10px; min-width:120px; text-align:center;">Disconnected</div>
+  <div class="app">
+    <header>
+      <h1>NeuroBike</h1>
+      <div class="controls" role="toolbar" aria-label="connect controls">
+        <button id="connectButton" class="btn btn-connect" title="Connect">Connect</button>
+        <button id="disconnectButton" class="btn btn-disconnect" title="Disconnect" disabled>Disconnect</button>
+        <div id="connectionStatus" class="btn-muted" style="padding:8px 10px; border-radius:10px; margin-left:8px; min-width:140px; text-align:center;">Disconnected</div>
       </div>
     </header>
 
-    <main class="content">
-      <div class="main-layout" style="width:100%; height:100%;">
-        <!-- LEFT: panels column -->
-        <section class="panels" style="padding-right:0;">
-          <!-- Speed card -->
-          <div class="card" style="display:flex; flex-direction:column; gap:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div class="label-sm">SPEED</div>
+    <div class="content">
+      <div class="main-grid" style="width:100%; height:100%;">
+        <!-- Left column (panels) -->
+        <div class="panels" style="padding-right:0;">
+          <div class="card">
+            <div class="speed">
+              <div class="left">
+                <div class="label">SPEED</div>
                 <div style="display:flex; align-items:baseline; gap:8px;">
-                  <div id="speedValue" class="speed-big">--</div>
-                  <div style="font-weight:700; color:#475569; font-size:16px;">km/h</div>
+                  <div id="speedValue" class="speed-value">--</div>
+                  <div class="unit">km/h</div>
                 </div>
               </div>
+
               <div style="text-align:right;">
-                <div class="label-sm">Crash</div>
-                <div id="crashStatus" class="stat-large" style="color:#16a34a;">SAFE</div>
+                <div class="label">Crash</div>
+                <div id="crashStatus" style="font-weight:900; font-size:18px; color:#16a34a;">SAFE</div>
+
                 <div style="height:8px"></div>
-                <div class="label-sm">Terrain</div>
-                <div id="terrainStatus" class="stat-large" style="color:#16a34a;">SMOOTH</div>
+
+                <div class="label">Terrain</div>
+                <div id="terrainStatus" style="font-weight:900; font-size:18px; color:#16a34a;">SMOOTH</div>
               </div>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
               <div>
-                <div class="label-sm">Duration</div>
-                <div id="summaryDuration" style="font-weight:800; font-size:16px;">--:--:--</div>
+                <div class="label">Duration</div>
+                <div id="summaryDuration" style="font-weight:900; font-size:16px;">--:--:--</div>
               </div>
               <div style="display:flex; gap:8px;">
-                <button id="timerStart" class="btn" title="Start">▶</button>
-                <button id="timerStop" class="btn" title="Stop">■</button>
-                <button id="timerReset" class="btn" title="Reset">↺</button>
+                <button id="timerStart" class="btn btn-muted" title="Start">▶</button>
+                <button id="timerStop" class="btn btn-muted" title="Stop">■</button>
+                <button id="timerReset" class="btn btn-muted" title="Reset">↺</button>
               </div>
             </div>
           </div>
 
-          <!-- Summary stats compact -->
-          <div class="card" style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
-            <div style="flex:1;">
-              <div class="label-sm">Distance</div>
-              <div id="summaryDistance" style="font-weight:800;">-- km</div>
-            </div>
-            <div style="flex:1;">
-              <div class="label-sm">Avg Speed</div>
-              <div id="summaryAvgSpeed" style="font-weight:800;">-- km/h</div>
-            </div>
-            <div style="flex:1;">
-              <div class="label-sm">Max Speed</div>
-              <div id="summaryMaxSpeed" style="font-weight:800;">-- km/h</div>
-            </div>
-          </div>
-
-          <!-- Extra: small sensor readout card -->
-          <div class="card" style="display:flex; flex-direction:column; gap:8px;">
-            <div style="display:flex; justify-content:space-between;">
-              <div class="label-sm">Calories</div>
-              <div id="overlayCaloriesValue" style="font-weight:800;">--</div>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <div class="label-sm">Proximity</div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div id="proxDotSmall" style="height:14px;width:14px;border-radius:9999px;background:#16a34a;"></div>
-                <div id="overlayProxValue" style="font-weight:800;">-- cm</div>
+          <div class="card">
+            <div style="display:flex; gap:12px;">
+              <div class="stat" style="flex:1;">
+                <div class="label">Distance</div>
+                <b id="summaryDistance">-- km</b>
+              </div>
+              <div class="stat" style="flex:1;">
+                <div class="label">Avg Speed</div>
+                <b id="summaryAvgSpeed">-- km/h</b>
+              </div>
+              <div class="stat" style="flex:1;">
+                <div class="label">Max Speed</div>
+                <b id="summaryMaxSpeed">-- km/h</b>
               </div>
             </div>
-            <div style="font-size:12px;color:#64748b;">Tip: Map follows GPS. Move outside for better GPS fix.</div>
           </div>
-        </section>
+        </div>
 
-        <!-- RIGHT: map column -->
-        <section style="position:relative;">
+        <!-- Right column (map) -->
+        <div style="position:relative;">
           <div id="map"></div>
-          <!-- floating HUD overlays (also visible on mobile) -->
+
+          <!-- Floating HUD: Calories & Proximity (now only here) -->
           <div class="hud-overlays" aria-hidden="false">
-            <div class="hud-card" id="calorieOverlay">
-              <img src="/mnt/data/Logo.png" alt="logo">
+            <div id="calorieOverlay" class="hud" role="status" aria-label="calories">
               <div>
-                <div class="label-sm">Calories</div>
-                <div id="overlayCaloriesValue_small" style="font-weight:800;">-- kcal</div>
+                <div class="small">Calories</div>
+                <div id="overlayCaloriesValue" class="value">-- kcal</div>
               </div>
             </div>
 
-            <div class="hud-card" id="proximityOverlay" style="display:flex; align-items:center;">
-              <div id="proxDotMini" style="height:12px;width:12px;border-radius:9999px;background:#16a34a;"></div>
-              <div style="margin-left:8px;">
-                <div class="label-sm">Proximity</div>
-                <div id="overlayProxValue_small" style="font-weight:800;">-- cm</div>
+            <div id="proximityOverlay" class="hud" role="status" aria-label="proximity">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div id="proxDotSmall" class="prox-dot prox-green" aria-hidden="true"></div>
+                <div>
+                  <div class="small">Proximity</div>
+                  <div id="overlayProxValue" class="value">-- cm</div>
+                </div>
               </div>
             </div>
           </div>
-        </section>
+
+        </div>
       </div>
-    </main>
+    </div>
   </div>
 
   <!-- Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Full JS (same logic as your original file; BLE, parser, map, crash detection, session, timers) -->
+  <!-- JavaScript: same BLE & logic as before, with DOM adjustments to match the new layout -->
   <script>
-    /* SMARTCYCLE HUD JAVASCRIPT - ADAPTED FOR RESPONSIVE LAYOUT
-       This script is functionally identical to the one you gave earlier.
-       Paste/replace if you already have the full script in a separate JS file.
-    */
-
     const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
     const CHARACTERISTIC_UUID = "87654321-4321-4321-4321-cba987654321";
 
@@ -302,162 +286,383 @@
     const TERRAIN_ROUGH_THRESHOLD = 20000000;
     const TERRAIN_MODERATE_THRESHOLD = 5000000;
 
-    // Proximity thresholds (cm)
-    const PROX_SAFE_THRESHOLD = 90; // green
-    const PROX_WARNING_THRESHOLD = 50; // yellow
-
+    const PROX_SAFE_THRESHOLD = 90;
+    const PROX_WARNING_THRESHOLD = 50;
     const KcalPerKm = 40;
+    const PATH_MIN_DISTANCE_M = 2;
+    const CALC_DELAY_MS = 7000;
 
-    // Path tracking
     let pathLatLngs = [];
     let pathPolyline = null;
-    const PATH_MIN_DISTANCE_M = 2; // ignore small GPS jitter
-
     let bleDevice=null, bleServer=null, bleCharacteristic=null;
     let map=null, mapMarker=null;
     let session={startTime:null, durationInterval:null, maxSpeed:0, totalSpeed:0, speedReadings:0, totalDistanceCM:0, totalCalories:0, traveledMeters:0};
     const terrainHistory = {ax:[], ay:[], az:[]};
     const DOM = {};
 
-    // Manual timer state
     let manualTimer = {running:false, startTs:0, elapsedBefore:0, interval:null};
-
-    // Proximity state
     let proxState='unknown', lastProxAlertTs=0;
-
-    // Calculation delay control: ignore initial noisy GPS for a short time after connect
-    const CALC_DELAY_MS = 7000; // 7 seconds (between 5-10s as requested)
-    let calcStartAt = 0;
-    let calculationEnabled = false;
+    let calcStartAt = 0, calculationEnabled = false;
 
     window.addEventListener('DOMContentLoaded', ()=> {
-      DOM.connectButton=document.getElementById('connectButton'); DOM.disconnectButton=document.getElementById('disconnectButton'); DOM.connectionStatus=document.getElementById('connectionStatus');
-      DOM.speedValue=document.getElementById('speedValue'); DOM.crashStatus=document.getElementById('crashStatus'); DOM.terrainStatus=document.getElementById('terrainStatus');
-      DOM.summaryDuration=document.getElementById('summaryDuration'); DOM.summaryDistance=document.getElementById('summaryDistance'); DOM.summaryAvgSpeed=document.getElementById('summaryAvgSpeed'); DOM.summaryMaxSpeed=document.getElementById('summaryMaxSpeed');
-      DOM.overlayCaloriesValue=document.getElementById('overlayCaloriesValue'); DOM.overlayProxValue=document.getElementById('overlayProxValue'); DOM.proxDotSmall=document.getElementById('proxDotSmall');
+      DOM.connectButton = document.getElementById('connectButton');
+      DOM.disconnectButton = document.getElementById('disconnectButton');
+      DOM.connectionStatus = document.getElementById('connectionStatus');
 
-      // duplicated small overlay nodes
-      DOM.overlayCaloriesValue_small = document.getElementById('overlayCaloriesValue_small');
-      DOM.overlayProxValue_small = document.getElementById('overlayProxValue_small');
-      DOM.proxDotMini = document.getElementById('proxDotMini');
+      DOM.speedValue = document.getElementById('speedValue');
+      DOM.crashStatus = document.getElementById('crashStatus');
+      DOM.terrainStatus = document.getElementById('terrainStatus');
+      DOM.summaryDuration = document.getElementById('summaryDuration');
+      DOM.summaryDistance = document.getElementById('summaryDistance');
+      DOM.summaryAvgSpeed = document.getElementById('summaryAvgSpeed');
+      DOM.summaryMaxSpeed = document.getElementById('summaryMaxSpeed');
 
-      DOM.timerStart=document.getElementById('timerStart'); DOM.timerStop=document.getElementById('timerStop'); DOM.timerReset=document.getElementById('timerReset');
+      DOM.overlayCaloriesValue = document.getElementById('overlayCaloriesValue');
+      DOM.proxDotSmall = document.getElementById('proxDotSmall');
+      DOM.overlayProxValue = document.getElementById('overlayProxValue');
 
-      DOM.connectButton.addEventListener('click', onConnectButtonClick); DOM.disconnectButton.addEventListener('click', onDisconnectButtonClick);
-      DOM.timerStart.addEventListener('click', ()=>startManualTimer()); DOM.timerStop.addEventListener('click', ()=>stopManualTimer()); DOM.timerReset.addEventListener('click', ()=>resetManualTimer());
+      DOM.timerStart = document.getElementById('timerStart');
+      DOM.timerStop = document.getElementById('timerStop');
+      DOM.timerReset = document.getElementById('timerReset');
+
+      DOM.connectButton.addEventListener('click', onConnectButtonClick);
+      DOM.disconnectButton.addEventListener('click', onDisconnectButtonClick);
+      DOM.timerStart.addEventListener('click', ()=>startManualTimer());
+      DOM.timerStop.addEventListener('click', ()=>stopManualTimer());
+      DOM.timerReset.addEventListener('click', ()=>resetManualTimer());
 
       if(typeof L !== 'undefined') initializeMap(51.505, -0.09);
     });
 
-    async function onConnectButtonClick(){ if(!navigator.bluetooth) return updateConnectionStatus('Bluetooth not supported','error'); try{ updateConnectionStatus('Requesting device...','connecting'); bleDevice=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}], optionalServices:[SERVICE_UUID]}); if(!bleDevice) return updateConnectionStatus('No device selected','disconnected'); updateConnectionStatus('Connecting...','connecting'); bleDevice.addEventListener('gattserverdisconnected', onGATTServerDisconnected); bleServer=await bleDevice.gatt.connect(); const service=await bleServer.getPrimaryService(SERVICE_UUID); bleCharacteristic=await service.getCharacteristic(CHARACTERISTIC_UUID); await bleCharacteristic.startNotifications(); bleCharacteristic.addEventListener('characteristicvaluechanged', handleCharacteristicNotification); updateConnectionStatus(`Connected to ${bleDevice.name||'Device'}`,'connected'); DOM.connectButton.disabled=true; DOM.disconnectButton.disabled=false; startSession();
-      // set delayed calculation start time
-      calcStartAt = Date.now() + CALC_DELAY_MS;
-      calculationEnabled = false;
-    }catch(e){ console.error(e); updateConnectionStatus('Connection failed','error'); if(bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); } }
-    function onDisconnectButtonClick(){ if(bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); else onGATTServerDisconnected(); }
-    function onGATTServerDisconnected(){ updateConnectionStatus('Disconnected','disconnected'); DOM.connectButton.disabled=false; DOM.disconnectButton.disabled=true; if(bleCharacteristic && typeof bleCharacteristic.removeEventListener==='function') bleCharacteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicNotification); bleDevice=null; bleServer=null; bleCharacteristic=null; stopSession(); resetUI(); }
+    function updateConnectionStatus(text, status) {
+      DOM.connectionStatus.textContent = text;
+      DOM.connectionStatus.className = 'btn-muted';
+      if (status === 'connecting') DOM.connectionStatus.style.background = 'linear-gradient(90deg,#fde68a,#f59e0b)';
+      else if (status === 'connected') DOM.connectionStatus.style.background = 'linear-gradient(90deg,#bbf7d0,#10b981)';
+      else if (status === 'error') DOM.connectionStatus.style.background = 'linear-gradient(90deg,#fecaca,#ef4444)';
+      else DOM.connectionStatus.style.background = 'rgba(255,255,255,0.85)';
+    }
 
-    function handleCharacteristicNotification(evt){ if(!evt.target||!evt.target.value) return; const value=new TextDecoder().decode(evt.target.value); const data=parseDataString(value); if(!data||Object.keys(data).length===0) return; const analysisData={ lat: parseFloat(data['Lat'])||null, lon: parseFloat(data['Lon'])||null, spd: parseFloat(data['Spd'])||0, alt: parseFloat(data['Alt'])||0, dist: parseFloat(data['Dist'])||0, sats: parseInt(data['Sats'])||0, ax: parseFloat(data['AX'])||0, ay: parseFloat(data['AY'])||0, az: parseFloat(data['AZ'])||0, gx: parseFloat(data['GX'])||0, gy: parseFloat(data['GY'])||0, gz: parseFloat(data['GZ'])||0, prox: (data['Prox']!==undefined)?parseFloat(data['Prox']):null };
+    async function onConnectButtonClick(){
+      if(!navigator.bluetooth) { updateConnectionStatus('Bluetooth not supported','error'); alert('Web Bluetooth is not available in this browser. Use Chrome on Android.'); return; }
+      try {
+        updateConnectionStatus('Requesting device...','connecting');
+        DOM.connectButton.disabled = true;
+        bleDevice = await navigator.bluetooth.requestDevice({ filters:[{services:[SERVICE_UUID]}], optionalServices:[SERVICE_UUID]});
+        if(!bleDevice) { updateConnectionStatus('No device selected','disconnected'); DOM.connectButton.disabled = false; return; }
+        updateConnectionStatus('Connecting...','connecting');
+        bleDevice.addEventListener('gattserverdisconnected', onGATTServerDisconnected);
+        bleServer = await bleDevice.gatt.connect();
+        const service = await bleServer.getPrimaryService(SERVICE_UUID);
+        bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+        await bleCharacteristic.startNotifications();
+        bleCharacteristic.addEventListener('characteristicvaluechanged', handleCharacteristicNotification);
+        updateConnectionStatus(`Connected to ${bleDevice.name||'Device'}`,'connected');
+        DOM.connectButton.disabled = true;
+        DOM.disconnectButton.disabled = false;
+        startSession();
+        calcStartAt = Date.now() + CALC_DELAY_MS;
+        calculationEnabled = false;
+      } catch(e) {
+        console.error(e);
+        updateConnectionStatus('Connection failed','error');
+        DOM.connectButton.disabled = false;
+        try { if(bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); } catch(_) {}
+      }
+    }
 
-      // Update main gauge immediately
-      DOM.speedValue.textContent = analysisData.spd.toFixed(1);
+    function onDisconnectButtonClick(){
+      try {
+        if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) bleDevice.gatt.disconnect();
+        else onGATTServerDisconnected();
+      } catch(e) { onGATTServerDisconnected(); }
+    }
+    function onGATTServerDisconnected(){
+      updateConnectionStatus('Disconnected','disconnected');
+      DOM.connectButton.disabled = false;
+      DOM.disconnectButton.disabled = true;
+      if (bleCharacteristic && typeof bleCharacteristic.removeEventListener === 'function') {
+        try { bleCharacteristic.removeEventListener('characteristicvaluechanged', handleCharacteristicNotification); } catch(e) {}
+      }
+      bleDevice = null; bleServer = null; bleCharacteristic = null;
+      stopSession(); resetUI();
+    }
 
-      // update small overlay mirrors
-      if(DOM.overlayCaloriesValue_small) DOM.overlayCaloriesValue_small.textContent = DOM.overlayCaloriesValue ? DOM.overlayCaloriesValue.textContent : '--';
-      if(DOM.overlayProxValue_small && analysisData.prox !== null) DOM.overlayProxValue_small.textContent = Math.round(analysisData.prox) + ' cm';
+    function handleCharacteristicNotification(evt) {
+      try {
+        if(!evt.target || !evt.target.value) return;
+        const raw = new TextDecoder().decode(evt.target.value).trim();
+        if(!raw) return;
+        const data = parseDataString(raw);
+        if(!data || Object.keys(data).length === 0) return;
 
-      // If GPS present, decide whether to enable calculations yet
-      if(analysisData.lat !== null && analysisData.lon !== null) {
-        if(!calculationEnabled) {
-          if(Date.now() >= calcStartAt) {
-            // Enable calculations now and seed path with current location
-            calculationEnabled = true;
-            pathLatLngs = [[analysisData.lat, analysisData.lon]];
-            session.traveledMeters = 0;
-            // initialize polyline if map exists
-            if(map) {
-              if(pathPolyline) pathPolyline.remove();
-              pathPolyline = L.polyline(pathLatLngs, { color: '#2563eb', weight: 4, opacity: 0.9, lineJoin: 'round' }).addTo(map);
-            }
-          } else {
-            // Still in warm-up period: update marker position but DON'T accumulate distance/calories
-            updateMarkerOnly(analysisData.lat, analysisData.lon);
-          }
+        const analysisData = {
+          lat: (data['Lat'] !== undefined) ? parseFloat(data['Lat']) || null : null,
+          lon: (data['Lon'] !== undefined) ? parseFloat(data['Lon']) || null : null,
+          spd: parseFloat(data['Spd']) || 0,
+          alt: parseFloat(data['Alt']) || 0,
+          dist: parseFloat(data['Dist']) || 0,
+          sats: parseInt(data['Sats']) || 0,
+          ax: parseFloat(data['AX']) || 0, ay: parseFloat(data['AY']) || 0, az: parseFloat(data['AZ']) || 0,
+          gx: parseFloat(data['GX']) || 0, gy: parseFloat(data['GY']) || 0, gz: parseFloat(data['GZ']) || 0,
+          prox: (data['Prox'] !== undefined) ? (isNaN(parseFloat(data['Prox'])) ? null : parseFloat(data['Prox'])) : null
+        };
+
+        DOM.speedValue.textContent = (analysisData.spd || 0).toFixed(1);
+
+        // mirror calories/prox overlays (calories computed from session)
+        if (DOM.overlayCaloriesValue) {
+          const calEst = Math.round(session.totalCalories || 0);
+          DOM.overlayCaloriesValue.textContent = isFinite(calEst) ? (calEst + ' kcal') : '-- kcal';
+        }
+        if (DOM.overlayProxValue && analysisData.prox !== null) {
+          DOM.overlayProxValue.textContent = Math.round(analysisData.prox) + ' cm';
         }
 
-        // If enabled, update path + map
-        if(calculationEnabled) updateMapPositionWithPath(analysisData.lat, analysisData.lon);
+        if (analysisData.lat !== null && analysisData.lon !== null) {
+          if(!calculationEnabled) {
+            if(Date.now() >= calcStartAt) {
+              calculationEnabled = true;
+              pathLatLngs = [[analysisData.lat, analysisData.lon]];
+              session.traveledMeters = 0;
+              if(map) {
+                if(pathPolyline) pathPolyline.remove();
+                pathPolyline = L.polyline(pathLatLngs, { color: '#ffffff', weight: 4, opacity: 0.9 }).addTo(map);
+              }
+            } else {
+              updateMarkerOnly(analysisData.lat, analysisData.lon);
+            }
+          }
+          if (calculationEnabled) updateMapPositionWithPath(analysisData.lat, analysisData.lon);
+        }
+
+        checkCrash(analysisData.gx, analysisData.gy, analysisData.gz);
+        updateTerrainHistory(analysisData.ax, analysisData.ay, analysisData.az);
+        checkTerrain();
+        if (analysisData.prox !== null) checkProximity(analysisData.prox);
+
+        if (calculationEnabled) updateSessionStats(analysisData);
+      } catch(err) {
+        console.warn('Notification handler error', err);
       }
-
-      // Continue running other analyses regardless of warm-up
-      checkCrash(analysisData.gx, analysisData.gy, analysisData.gz);
-      updateTerrainHistory(analysisData.ax, analysisData.ay, analysisData.az);
-      checkTerrain();
-
-      if(analysisData.prox !== null) checkProximity(analysisData.prox);
-
-      // Update session stats only if calculation enabled
-      if(calculationEnabled) updateSessionStats(analysisData);
     }
 
-    function parseDataString(s){ if(!s) return null; const obj={}; s.split(',').forEach(pair=>{ const parts=pair.split(':'); if(parts.length<2) return; const key=parts[0].trim(); const val=parts.slice(1).join(':').trim(); if(key && FIELDS[key]) obj[key]=val; }); return obj; }
+    function parseDataString(s) {
+      if(!s) return null;
+      const obj = {};
+      s.split(',').forEach(pair => {
+        const parts = pair.split(':');
+        if (parts.length < 2) return;
+        const key = parts[0].trim();
+        const val = parts.slice(1).join(':').trim();
+        if (key && FIELDS[key]) obj[key] = val;
+      });
+      return obj;
+    }
 
-    function updateConnectionStatus(text,status){ DOM.connectionStatus.textContent=text; DOM.connectionStatus.classList.remove('bg-white/50','text-gray-700','bg-yellow-100/50','text-yellow-700','bg-green-100/50','text-green-700','bg-red-100/50','text-red-700'); if(status==='connecting') DOM.connectionStatus.classList.add('bg-yellow-100/50','text-yellow-700'); else if(status==='connected') DOM.connectionStatus.classList.add('bg-green-100/50','text-green-700'); else if(status==='error') DOM.connectionStatus.classList.add('bg-red-100/50','text-red-700'); else DOM.connectionStatus.classList.add('bg-white/50','text-gray-700'); }
+    function initializeMap(lat,lon) {
+      if(map) return;
+      try {
+        map = L.map('map',{zoomControl:false, attributionControl:false}).setView([lat,lon],13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap contributors'}).addTo(map);
+        const pulsingIcon = L.divIcon({className:'gps-marker-icon', html:'<div class="gps-ring"></div>', iconSize:[24,24], iconAnchor:[12,12]});
+        mapMarker = L.marker([lat,lon], { icon: pulsingIcon }).addTo(map);
+        pathLatLngs = [[lat,lon]];
+        if(pathPolyline) pathPolyline.remove();
+        pathPolyline = L.polyline(pathLatLngs, { color: '#ffffff', weight: 4, opacity: 0.9 }).addTo(map);
+      } catch(e) { console.error('Map init failed', e); }
+    }
 
-    function initializeMap(lat,lon){ if(map) return; try{ map=L.map('map',{zoomControl:false, attributionControl:false}).setView([lat,lon],13); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap contributors'}).addTo(map); const pulsingIcon=L.divIcon({className:'gps-marker-icon', html:'<div class="gps-ring"></div>', iconSize:[24,24], iconAnchor:[12,12]}); mapMarker=L.marker([lat,lon],{icon:pulsingIcon}).addTo(map);
-          // init path (but don't start counting until calculationEnabled)
-          pathLatLngs = [[lat,lon]];
-          if(pathPolyline) pathPolyline.remove();
-          pathPolyline = L.polyline(pathLatLngs, { color: '#2563eb', weight: 4, opacity: 0.9, lineJoin: 'round' }).addTo(map);
-        }catch(e){ console.error('Map init failed', e);} }
-
-    function updateMarkerOnly(lat, lon){ // update marker & view but do not add to path or compute distance
-      if(!map || !mapMarker){ initializeMap(lat,lon); if(!map) return; }
+    function updateMarkerOnly(lat, lon) {
+      if(!map || !mapMarker) { initializeMap(lat,lon); if(!map) return; }
       const newLatLng = [lat,lon];
       mapMarker.setLatLng(newLatLng);
-      map.setView(newLatLng, 17, { animate: true, pan: { duration: 0.5 } });
+      try { map.setView(newLatLng, 17, { animate:true, pan:{ duration:0.5 }}); } catch(e) {}
     }
 
-    function updateMapPositionWithPath(lat,lon){ if(!map || !mapMarker){ initializeMap(lat,lon); if(!map) return; } const newLatLng = [lat,lon]; mapMarker.setLatLng(newLatLng);
-      // add to path if moved enough
-      const last = pathLatLngs.length ? pathLatLngs[pathLatLngs.length-1] : null;
+    function updateMapPositionWithPath(lat,lon) {
+      if(!map || !mapMarker) { initializeMap(lat,lon); if(!map) return; }
+      const newLatLng = [lat,lon];
+      mapMarker.setLatLng(newLatLng);
+
+      const last = pathLatLngs.length ? pathLatLngs[pathLatLngs.length - 1] : null;
       let shouldAdd = true;
-      if(last){ const d = distanceMeters(last[0], last[1], lat, lon); if(d < PATH_MIN_DISTANCE_M) shouldAdd = false; }
-      if(shouldAdd){ pathLatLngs.push(newLatLng); if(pathPolyline) pathPolyline.setLatLngs(pathLatLngs); else pathPolyline = L.polyline(pathLatLngs, { color: '#2563eb', weight: 4, opacity: 0.9, lineJoin: 'round' }).addTo(map);
-        // update traveled distance (meters)
-        if(last){ const d = distanceMeters(last[0], last[1], lat, lon); session.traveledMeters += d; session.totalDistanceCM = Math.round(session.traveledMeters * 100);
-          DOM.summaryDistance.textContent = `${(session.traveledMeters/1000).toFixed(2)} km`; }
+      if (last) {
+        const d = distanceMeters(last[0], last[1], lat, lon);
+        if (d < PATH_MIN_DISTANCE_M) shouldAdd = false;
       }
-      // keep HUD centered
-      map.setView(newLatLng, 17, { animate: true, pan: { duration: 0.5 } }); }
+      if (shouldAdd) {
+        pathLatLngs.push(newLatLng);
+        if (pathPolyline) pathPolyline.setLatLngs(pathLatLngs);
+        else pathPolyline = L.polyline(pathLatLngs, { color: '#ffffff', weight: 4, opacity: 0.9 }).addTo(map);
+        if (last) {
+          const d = distanceMeters(last[0], last[1], lat, lon);
+          session.traveledMeters += d;
+          session.totalDistanceCM = Math.round(session.traveledMeters * 100);
+          DOM.summaryDistance.textContent = `${(session.traveledMeters/1000).toFixed(2)} km`;
+        }
+      }
+      try { map.setView(newLatLng, 17, { animate:true, pan:{ duration:0.5 }}); } catch(e) {}
+    }
 
-    // haversine
-    function distanceMeters(lat1, lon1, lat2, lon2){ const toRad = x => x * Math.PI / 180; const R = 6371000; const dLat = toRad(lat2-lat1); const dLon = toRad(lon2-lon1); const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)*Math.sin(dLon/2); const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); return R * c; }
+    function distanceMeters(lat1, lon1, lat2, lon2) {
+      const toRad = x => x * Math.PI / 180;
+      const R = 6371000;
+      const dLat = toRad(lat2-lat1); const dLon = toRad(lon2-lon1);
+      const a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)*Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
 
-    let crashDetected=false; function checkCrash(gx,gy,gz){ const isCrash=Math.abs(gx)>CRASH_DETECTION_THRESHOLD||Math.abs(gy)>CRASH_DETECTION_THRESHOLD||Math.abs(gz)>CRASH_DETECTION_THRESHOLD; if(isCrash && !crashDetected){ crashDetected=true; DOM.crashStatus.textContent='CRASH!'; DOM.crashPanel?.classList?.remove?.('bg-green-500/10','border-green-500/30'); DOM.crashPanel?.classList?.add?.('bg-red-500/10','border-red-500/30'); let emergencyOverlay=document.getElementById('emergencyOverlay'); if(!emergencyOverlay){ emergencyOverlay=document.createElement('div'); emergencyOverlay.id='emergencyOverlay'; emergencyOverlay.innerHTML=`<h1 style="font-size:36px;font-weight:800;margin-bottom:20px;">CRASH DETECTED!</h1><p style="font-size:18px;margin-bottom:20px;">Are you okay?</p><button id="callEmergency" style="padding:14px 24px;margin-bottom:12px;border-radius:9999px;background:white;color:#b91c1c;font-weight:700;">Call Emergency Services</button><br/><button id="dismissEmergency" style="padding:10px 18px;border-radius:9999px;background:rgba(255,255,255,0.85);">Dismiss</button>`; document.body.appendChild(emergencyOverlay); document.getElementById('callEmergency').addEventListener('click',()=>{ console.log('Calling emergency services...'); dismissEmergencyOverlay(); }); document.getElementById('dismissEmergency').addEventListener('click',()=>{ dismissEmergencyOverlay(); }); } } else if(!isCrash && !crashDetected){ DOM.crashStatus.textContent='SAFE'; } }
-    function dismissEmergencyOverlay(){ const overlay=document.getElementById('emergencyOverlay'); if(overlay){ document.getElementById('callEmergency')?.removeEventListener('click', dismissEmergencyOverlay); document.getElementById('dismissEmergency')?.removeEventListener('click', dismissEmergencyOverlay); overlay.remove(); crashDetected=false; DOM.crashStatus.textContent='SAFE'; } }
+    let crashDetected=false;
+    function checkCrash(gx,gy,gz) {
+      const isCrash = Math.abs(gx)>CRASH_DETECTION_THRESHOLD || Math.abs(gy)>CRASH_DETECTION_THRESHOLD || Math.abs(gz)>CRASH_DETECTION_THRESHOLD;
+      if (isCrash && !crashDetected) {
+        crashDetected = true;
+        DOM.crashStatus.textContent = 'CRASH!';
+        DOM.crashStatus.style.color = '#ef4444';
+        showEmergencyOverlay();
+      } else if (!isCrash && !crashDetected) {
+        DOM.crashStatus.textContent = 'SAFE';
+        DOM.crashStatus.style.color = '#16a34a';
+      }
+    }
 
-    function updateTerrainHistory(ax,ay,az){ terrainHistory.ax.push(ax); terrainHistory.ay.push(ay); terrainHistory.az.push(az); if(terrainHistory.ax.length>TERRAIN_HISTORY_LENGTH) terrainHistory.ax.shift(); if(terrainHistory.ay.length>TERRAIN_HISTORY_LENGTH) terrainHistory.ay.shift(); if(terrainHistory.az.length>TERRAIN_HISTORY_LENGTH) terrainHistory.az.shift(); }
-    function calculateVariance(arr){ if(!arr||arr.length<2) return 0; const mean=arr.reduce((a,b)=>a+b,0)/arr.length; return arr.reduce((acc,val)=>acc+Math.pow(val-mean,2),0)/arr.length; }
-    function checkTerrain(){ if(terrainHistory.ax.length<TERRAIN_HISTORY_LENGTH) return; const varAX=calculateVariance(terrainHistory.ax); const varAY=calculateVariance(terrainHistory.ay); const varAZ=calculateVariance(terrainHistory.az); const totalVariance=varAX+varAY+varAZ; if(terrainHistory.ax.length>=TERRAIN_HISTORY_LENGTH){ if(totalVariance>TERRAIN_ROUGH_THRESHOLD){ DOM.terrainStatus.textContent='ROUGH'; } else if(totalVariance>TERRAIN_MODERATE_THRESHOLD){ DOM.terrainStatus.textContent='MODERATE'; } else { DOM.terrainStatus.textContent='SMOOTH'; } } }
+    function showEmergencyOverlay() {
+      let emergencyOverlay = document.getElementById('emergencyOverlay');
+      if (emergencyOverlay) return;
+      emergencyOverlay = document.createElement('div');
+      emergencyOverlay.id = 'emergencyOverlay';
+      emergencyOverlay.style.position = 'fixed';
+      emergencyOverlay.style.left = '0';
+      emergencyOverlay.style.top = '0';
+      emergencyOverlay.style.width = '100vw';
+      emergencyOverlay.style.height = '100vh';
+      emergencyOverlay.style.display = 'flex';
+      emergencyOverlay.style.flexDirection = 'column';
+      emergencyOverlay.style.justifyContent = 'center';
+      emergencyOverlay.style.alignItems = 'center';
+      emergencyOverlay.style.background = 'rgba(255,0,0,0.85)';
+      emergencyOverlay.style.color = 'white';
+      emergencyOverlay.style.textAlign = 'center';
+      emergencyOverlay.style.zIndex = '3000';
+      emergencyOverlay.innerHTML = `
+        <h1 style="font-size:34px;font-weight:800;margin-bottom:14px;">CRASH DETECTED!</h1>
+        <p style="font-size:18px;margin-bottom:20px;">Are you okay?</p>
+        <button id="callEmergency" style="padding:12px 22px;background:#fff;color:#b91c1c;border-radius:9999px;font-weight:800;margin-bottom:12px;">Call Emergency Services</button>
+        <br/>
+        <button id="dismissEmergency" style="padding:9px 18px;background:rgba(255,255,255,0.9);border-radius:9999px;">Dismiss</button>
+      `;
+      document.body.appendChild(emergencyOverlay);
+      document.getElementById('callEmergency').addEventListener('click', () => { console.log('Call emergency'); dismissEmergencyOverlay(); });
+      document.getElementById('dismissEmergency').addEventListener('click', dismissEmergencyOverlay);
+    }
 
-    function checkProximity(distanceCM){ if(distanceCM===null||isNaN(distanceCM)) return; let newState='green'; if(distanceCM>=PROX_SAFE_THRESHOLD) newState='green'; else if(distanceCM>=PROX_WARNING_THRESHOLD) newState='yellow'; else newState='red'; if(DOM.overlayProxValue) DOM.overlayProxValue.textContent = Math.round(distanceCM); if(DOM.overlayProxValue_small) DOM.overlayProxValue_small.textContent = Math.round(distanceCM) + ' cm'; if(DOM.proxDotSmall) { DOM.proxDotSmall.className = (newState==='green'?'prox-dot prox-green':(newState==='yellow'?'prox-dot prox-yellow':'prox-dot prox-red prox-pulse')); } if(DOM.proxDotMini) DOM.proxDotMini.style.background = (newState==='green'?'#16a34a':(newState==='yellow'?'#f59e0b':'#dc2626')); const now=Date.now(); if(newState==='red' && proxState!=='red' && (now-lastProxAlertTs)>3000){ playBeep(); lastProxAlertTs=now; } proxState=newState; }
+    function dismissEmergencyOverlay() {
+      const overlay = document.getElementById('emergencyOverlay');
+      if (!overlay) return;
+      overlay.remove();
+      crashDetected = false;
+      DOM.crashStatus.textContent = 'SAFE';
+      DOM.crashStatus.style.color = '#16a34a';
+    }
 
-    function playBeep(){ try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=700; g.gain.value=0.04; o.connect(g); g.connect(ctx.destination); o.start(); setTimeout(()=>{ o.stop(); ctx.close(); },220); }catch(e){console.warn('Beep failed',e);} }
+    function updateTerrainHistory(ax,ay,az) {
+      terrainHistory.ax.push(ax); terrainHistory.ay.push(ay); terrainHistory.az.push(az);
+      if (terrainHistory.ax.length > TERRAIN_HISTORY_LENGTH) terrainHistory.ax.shift();
+      if (terrainHistory.ay.length > TERRAIN_HISTORY_LENGTH) terrainHistory.ay.shift();
+      if (terrainHistory.az.length > TERRAIN_HISTORY_LENGTH) terrainHistory.az.shift();
+    }
+    function calculateVariance(arr) {
+      if(!arr || arr.length < 2) return 0;
+      const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+      return arr.reduce((acc,val)=>acc+Math.pow(val-mean,2),0)/arr.length;
+    }
+    function checkTerrain() {
+      if (terrainHistory.ax.length < TERRAIN_HISTORY_LENGTH) return;
+      const varAX = calculateVariance(terrainHistory.ax);
+      const varAY = calculateVariance(terrainHistory.ay);
+      const varAZ = calculateVariance(terrainHistory.az);
+      const totalVariance = varAX + varAY + varAZ;
+      if (totalVariance > TERRAIN_ROUGH_THRESHOLD) {
+        DOM.terrainStatus.textContent = 'ROUGH'; DOM.terrainStatus.style.color = '#ef4444';
+      } else if (totalVariance > TERRAIN_MODERATE_THRESHOLD) {
+        DOM.terrainStatus.textContent = 'MODERATE'; DOM.terrainStatus.style.color = '#f59e0b';
+      } else {
+        DOM.terrainStatus.textContent = 'SMOOTH'; DOM.terrainStatus.style.color = '#16a34a';
+      }
+    }
 
-    function startSession(){ stopSession(); session.startTime=Date.now(); session.maxSpeed=0; session.totalSpeed=0; session.speedReadings=0; session.totalDistanceCM=0; session.totalCalories=0; session.traveledMeters=0; session.durationInterval=setInterval(()=>{/* reserved */},1000); }
-    function stopSession(){ if(session.durationInterval){ clearInterval(session.durationInterval); session.durationInterval=null; } }
+    function checkProximity(distanceCM){
+      if (distanceCM === null || isNaN(distanceCM)) return;
+      let newState = 'green';
+      if (distanceCM >= PROX_SAFE_THRESHOLD) newState = 'green';
+      else if (distanceCM >= PROX_WARNING_THRESHOLD) newState = 'yellow';
+      else newState = 'red';
+      if (DOM.overlayProxValue) DOM.overlayProxValue.textContent = Math.round(distanceCM) + ' cm';
+      if (DOM.proxDotSmall) {
+        DOM.proxDotSmall.className = 'prox-dot ' + (newState === 'green' ? 'prox-green' : (newState === 'yellow' ? 'prox-yellow' : 'prox-red'));
+      }
+      const now = Date.now();
+      if (newState === 'red' && proxState !== 'red' && (now - lastProxAlertTs) > 3000) {
+        playBeep(); lastProxAlertTs = now;
+      }
+      proxState = newState;
+    }
 
-    function startManualTimer(){ if(manualTimer.running) return; manualTimer.running=true; manualTimer.startTs=Date.now(); manualTimer.interval=setInterval(()=>{ updateManualTimerDisplay(); },250); }
-    function stopManualTimer(){ if(!manualTimer.running) return; manualTimer.running=false; clearInterval(manualTimer.interval); manualTimer.interval=null; manualTimer.elapsedBefore += Date.now() - manualTimer.startTs; updateManualTimerDisplay(); }
-    function resetManualTimer(){ manualTimer.running=false; clearInterval(manualTimer.interval); manualTimer.interval=null; manualTimer.startTs=0; manualTimer.elapsedBefore=0; updateManualTimerDisplay(); }
-    function updateManualTimerDisplay(){ const elapsed = manualTimer.elapsedBefore + (manualTimer.running ? (Date.now() - manualTimer.startTs) : 0); const totalSeconds=Math.floor(elapsed/1000); const hours=Math.floor(totalSeconds/3600); const minutes=Math.floor((totalSeconds%3600)/60); const seconds=totalSeconds%60; DOM.summaryDuration.textContent = [hours.toString().padStart(2,'0'), minutes.toString().padStart(2,'0'), seconds.toString().padStart(2,'0')].join(':'); }
+    function playBeep(){
+      try {
+        const ctx = new (window.AudioContext||window.webkitAudioContext)();
+        const o = ctx.createOscillator(); const g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = 700; g.gain.value = 0.04;
+        o.connect(g); g.connect(ctx.destination); o.start();
+        setTimeout(()=>{ o.stop(); ctx.close(); },220);
+      } catch(e) { console.warn('Beep failed', e); }
+    }
 
-    function updateSessionStats(data){ if(!calculationEnabled) return; if(data.spd>session.maxSpeed){ session.maxSpeed=data.spd; DOM.summaryMaxSpeed.textContent = `${session.maxSpeed.toFixed(1)} km/h`; } session.totalSpeed += data.spd; session.speedReadings++; const avgSpeed = session.speedReadings>0 ? session.totalSpeed/session.speedReadings : 0; DOM.summaryAvgSpeed.textContent = `${avgSpeed.toFixed(1)} km/h`; if(session.traveledMeters>0){ DOM.summaryDistance.textContent = `${(session.traveledMeters/1000).toFixed(2)} km`; session.totalDistanceCM = Math.round(session.traveledMeters*100); } else { session.totalDistanceCM = data.dist; const distKm = (session.totalDistanceCM/100/1000); DOM.summaryDistance.textContent = `${distKm.toFixed(2)} km`; } session.totalCalories = (session.traveledMeters/1000) * KcalPerKm; const calValue = Math.round(session.totalCalories); if(DOM.overlayCaloriesValue) DOM.overlayCaloriesValue.textContent = isFinite(calValue)?calValue:'--'; if(DOM.overlayCaloriesValue_small) DOM.overlayCaloriesValue_small.textContent = DOM.overlayCaloriesValue ? DOM.overlayCaloriesValue.textContent + ' kcal' : '--'; }
+    function startSession(){ stopSession(); session.startTime = Date.now(); session.maxSpeed = 0; session.totalSpeed = 0; session.speedReadings = 0; session.totalDistanceCM = 0; session.totalCalories = 0; session.traveledMeters = 0; session.durationInterval = setInterval(()=>{/* reserved */},1000); }
+    function stopSession(){ if (session.durationInterval) { clearInterval(session.durationInterval); session.durationInterval = null; } }
 
-    function resetUI(){ dismissEmergencyOverlay(); DOM.speedValue.textContent='--'; DOM.crashStatus.textContent='SAFE'; DOM.terrainStatus.textContent='SMOOTH'; DOM.summaryDuration.textContent='--:--:--'; DOM.summaryDistance.textContent='-- km'; DOM.summaryAvgSpeed.textContent='-- km/h'; DOM.summaryMaxSpeed.textContent='-- km/h'; if(DOM.overlayCaloriesValue) DOM.overlayCaloriesValue.textContent='--'; if(DOM.overlayCaloriesValue_small) DOM.overlayCaloriesValue_small.textContent='-- kcal'; if(DOM.overlayProxValue) DOM.overlayProxValue.textContent='--'; if(DOM.overlayProxValue_small) DOM.overlayProxValue_small.textContent='--'; if(DOM.proxDotSmall) { DOM.proxDotSmall.className='prox-dot prox-green'; } if(DOM.proxDotMini) DOM.proxDotMini.style.background='#16a34a'; resetManualTimer(); if(pathPolyline){ pathPolyline.remove(); pathPolyline = null; } pathLatLngs = []; session.traveledMeters = 0; calculationEnabled = false; }
+    function startManualTimer(){ if (manualTimer.running) return; manualTimer.running = true; manualTimer.startTs = Date.now(); manualTimer.interval = setInterval(()=>{ updateManualTimerDisplay(); },250); }
+    function stopManualTimer(){ if (!manualTimer.running) return; manualTimer.running = false; clearInterval(manualTimer.interval); manualTimer.interval = null; manualTimer.elapsedBefore += Date.now() - manualTimer.startTs; updateManualTimerDisplay(); }
+    function resetManualTimer(){ manualTimer.running = false; clearInterval(manualTimer.interval); manualTimer.interval = null; manualTimer.startTs = 0; manualTimer.elapsedBefore = 0; updateManualTimerDisplay(); }
+    function updateManualTimerDisplay(){ const elapsed = manualTimer.elapsedBefore + (manualTimer.running ? (Date.now() - manualTimer.startTs) : 0); const totalSeconds = Math.floor(elapsed/1000); const hours = Math.floor(totalSeconds/3600); const minutes = Math.floor((totalSeconds%3600)/60); const seconds = totalSeconds%60; DOM.summaryDuration.textContent = [hours.toString().padStart(2,'0'), minutes.toString().padStart(2,'0'), seconds.toString().padStart(2,'0')].join(':'); }
 
+    function updateSessionStats(data){
+      if (!calculationEnabled) return;
+      if (data.spd > session.maxSpeed) { session.maxSpeed = data.spd; DOM.summaryMaxSpeed.textContent = `${session.maxSpeed.toFixed(1)} km/h`; }
+      session.totalSpeed += data.spd; session.speedReadings++;
+      const avgSpeed = session.speedReadings > 0 ? session.totalSpeed / session.speedReadings : 0;
+      DOM.summaryAvgSpeed.textContent = `${avgSpeed.toFixed(1)} km/h`;
+      if (session.traveledMeters > 0) {
+        DOM.summaryDistance.textContent = `${(session.traveledMeters/1000).toFixed(2)} km`;
+        session.totalDistanceCM = Math.round(session.traveledMeters * 100);
+      } else {
+        session.totalDistanceCM = data.dist || 0;
+        const distKm = (session.totalDistanceCM/100/1000);
+        DOM.summaryDistance.textContent = `${distKm.toFixed(2)} km`;
+      }
+      session.totalCalories = (session.traveledMeters/1000) * KcalPerKm;
+      const calValue = Math.round(session.totalCalories);
+      if (DOM.overlayCaloriesValue) DOM.overlayCaloriesValue.textContent = isFinite(calValue) ? (calValue + ' kcal') : '-- kcal';
+    }
+
+    function resetUI(){
+      dismissEmergencyOverlay();
+      DOM.speedValue.textContent = '--';
+      DOM.crashStatus.textContent = 'SAFE'; DOM.crashStatus.style.color = '#16a34a';
+      DOM.terrainStatus.textContent = 'SMOOTH'; DOM.terrainStatus.style.color = '#16a34a';
+      DOM.summaryDuration.textContent = '--:--:--';
+      DOM.summaryDistance.textContent = '-- km';
+      DOM.summaryAvgSpeed.textContent = '-- km/h';
+      DOM.summaryMaxSpeed.textContent = '-- km/h';
+      if (DOM.overlayCaloriesValue) DOM.overlayCaloriesValue.textContent = '-- kcal';
+      if (DOM.overlayProxValue) DOM.overlayProxValue.textContent = '-- cm';
+      if (DOM.proxDotSmall) DOM.proxDotSmall.className = 'prox-dot prox-green';
+      resetManualTimer();
+      if (pathPolyline) { pathPolyline.remove(); pathPolyline = null; }
+      pathLatLngs = []; session.traveledMeters = 0; calculationEnabled = false;
+    }
   </script>
-
 </body>
 </html>
